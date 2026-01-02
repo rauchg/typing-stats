@@ -34,8 +34,9 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-          SIGNATURE=$(/tmp/bin/sign_update TypingStats.zip -f /tmp/sparkle_key | grep "sparkle:edSignature" | sed 's/.*"\(.*\)".*/\1/')
-          LENGTH=$(stat -f%z TypingStats.zip)
+          OUTPUT=$(/tmp/bin/sign_update TypingStats.zip -f /tmp/sparkle_key)
+          SIGNATURE=$(echo "$OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          LENGTH=$(echo "$OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
           echo "signature=$SIGNATURE" >> $GITHUB_OUTPUT
           echo "length=$LENGTH" >> $GITHUB_OUTPUT
           rm /tmp/sparkle_key
