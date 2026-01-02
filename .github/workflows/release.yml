@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Create zip
+        run: zip -r TypingStats.zip TypingStats.app
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update cask formula
+        run: |
+          SHA=$(shasum -a 256 TypingStats.zip | awk '{print $1}')
+          sed -i '' "s/version \".*\"/version \"${{ steps.version.outputs.version }}\"/" Casks/typing-stats.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"$SHA\"/" Casks/typing-stats.rb
+
+      - name: Commit updated formula
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/typing-stats.rb
+          git commit -m "Update cask to v${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: TypingStats.zip
+          generate_release_notes: true
