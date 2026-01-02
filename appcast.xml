@@ -3,11 +3,11 @@
   <channel>
     <title>Typing Stats</title>
     <item>
-      <title>Version 0.0.2</title>
-      <sparkle:version>0.0.2</sparkle:version>
-      <sparkle:shortVersionString>0.0.2</sparkle:shortVersionString>
-      <pubDate>Thu, 01 Jan 2026 00:00:00 +0000</pubDate>
-      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.2/TypingStats.zip"
+      <title>Version 0.0.3</title>
+      <sparkle:version>0.0.3</sparkle:version>
+      <sparkle:shortVersionString>0.0.3</sparkle:shortVersionString>
+      <pubDate>Fri, 02 Jan 2026 06:23:18 +0000</pubDate>
+      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.3/TypingStats.zip"
                  type="application/octet-stream"
                  sparkle:installationType="package"/>
     </item>
