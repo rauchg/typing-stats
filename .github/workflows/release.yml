@@ -23,6 +23,23 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Download Sparkle
+        run: |
+          curl -L -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
+          cd /tmp && tar xf sparkle.tar.xz
+
+      - name: Sign update
+        id: sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
+          SIGNATURE=$(/tmp/bin/sign_update TypingStats.zip -f /tmp/sparkle_key | grep "sparkle:edSignature" | sed 's/.*"\(.*\)".*/\1/')
+          LENGTH=$(stat -f%z TypingStats.zip)
+          echo "signature=$SIGNATURE" >> $GITHUB_OUTPUT
+          echo "length=$LENGTH" >> $GITHUB_OUTPUT
+          rm /tmp/sparkle_key
+
       - name: Update cask formula
         run: |
           SHA=$(shasum -a 256 TypingStats.zip | awk '{print $1}')
@@ -33,6 +50,8 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
+          SIGNATURE="${{ steps.sign.outputs.signature }}"
+          LENGTH="${{ steps.sign.outputs.length }}"
           cat > appcast.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
           <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -44,7 +63,9 @@ jobs:
                 <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
                 <pubDate>${DATE}</pubDate>
                 <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v${VERSION}/TypingStats.zip"
-                           type="application/octet-stream"/>
+                           type="application/octet-stream"
+                           length="${LENGTH}"
+                           sparkle:edSignature="${SIGNATURE}"/>
               </item>
             </channel>
           </rss>
