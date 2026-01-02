@@ -44,8 +44,7 @@ jobs:
                 <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
                 <pubDate>${DATE}</pubDate>
                 <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v${VERSION}/TypingStats.zip"
-                           type="application/octet-stream"
-                           sparkle:installationType="package"/>
+                           type="application/octet-stream"/>
               </item>
             </channel>
           </rss>
