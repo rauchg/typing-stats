@@ -562,6 +562,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         theMenu.addItem(NSMenuItem.separator())
 
         theMenu.addItem(NSMenuItem(
+            title: "About Typing Stats",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        ))
+
+        theMenu.addItem(NSMenuItem(
             title: "Check for Updates...",
             action: #selector(checkForUpdates),
             keyEquivalent: ""
@@ -720,6 +726,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             print("Failed to toggle launch at login: \(error)")
         }
+    }
+
+    @objc private func showAbout() {
+        let alert = NSAlert()
+        alert.messageText = "Typing Stats"
+
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        alert.informativeText = "Version \(version) (\(build))\n\nTrack your daily keystroke statistics across devices."
+
+        if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
+           let icon = NSImage(contentsOfFile: iconPath) {
+            alert.icon = icon
+        }
+
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func checkForUpdates() {
