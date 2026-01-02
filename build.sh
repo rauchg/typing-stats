@@ -12,10 +12,19 @@ echo "Creating app bundle..."
 rm -rf "$BUNDLE_NAME"
 mkdir -p "$BUNDLE_NAME/Contents/MacOS"
 mkdir -p "$BUNDLE_NAME/Contents/Resources"
+mkdir -p "$BUNDLE_NAME/Contents/Frameworks"
 
 cp "$BUILD_DIR/release/TypingStats" "$BUNDLE_NAME/Contents/MacOS/"
 cp Info.plist "$BUNDLE_NAME/Contents/"
 cp AppIcon.icns "$BUNDLE_NAME/Contents/Resources/"
+
+# Copy Sparkle framework
+SPARKLE_PATH=$(find "$BUILD_DIR" -name "Sparkle.framework" -type d | head -1)
+if [ -n "$SPARKLE_PATH" ]; then
+    cp -R "$SPARKLE_PATH" "$BUNDLE_NAME/Contents/Frameworks/"
+    # Fix rpath to find framework
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$BUNDLE_NAME/Contents/MacOS/TypingStats" 2>/dev/null || true
+fi
 
 echo "Build complete: $BUNDLE_NAME"
 echo ""

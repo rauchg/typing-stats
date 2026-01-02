@@ -71,17 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         startSyncTimer()
         startFileMonitor()
-        setupUpdateChecker()
-    }
-
-    private func setupUpdateChecker() {
-        updateChecker.onUpdateAvailable = { [weak self] _ in
-            self?.rebuildMenu()
-        }
-        updateChecker.onCheckComplete = { [weak self] in
-            self?.rebuildMenu()
-        }
-        updateChecker.startPeriodicChecks()
+        _ = updateChecker // Initialize Sparkle
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -501,32 +491,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return image
     }
 
-    private func createUpdateBadgeIcon() -> NSImage {
-        let size = NSSize(width: 16, height: 16)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1))
-            NSColor.systemBlue.setFill()
-            circle.fill()
-
-            let arrow = NSBezierPath()
-            let centerX = rect.midX
-            let centerY = rect.midY
-            arrow.move(to: NSPoint(x: centerX, y: centerY + 4))
-            arrow.line(to: NSPoint(x: centerX, y: centerY - 2))
-            arrow.move(to: NSPoint(x: centerX - 3, y: centerY + 1))
-            arrow.line(to: NSPoint(x: centerX, y: centerY + 4))
-            arrow.line(to: NSPoint(x: centerX + 3, y: centerY + 1))
-            arrow.lineWidth = 1.5
-            arrow.lineCapStyle = .round
-            arrow.lineJoinStyle = .round
-            NSColor.white.setStroke()
-            arrow.stroke()
-
-            return true
-        }
-        return image
-    }
-
     // MARK: - Menu Bar Setup
 
     private func setupMenuBar() {
@@ -597,24 +561,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         theMenu.addItem(NSMenuItem.separator())
 
-        if updateChecker.availableUpdate != nil,
-           let version = updateChecker.latestVersionString {
-            let updateItem = NSMenuItem(
-                title: "Install Update (v\(version))",
-                action: #selector(installUpdate),
-                keyEquivalent: ""
-            )
-            updateItem.image = createUpdateBadgeIcon()
-            theMenu.addItem(updateItem)
-        } else {
-            let checkItem = NSMenuItem(
-                title: updateChecker.isChecking ? "Checking for Updates..." : "Check for Updates",
-                action: updateChecker.isChecking ? nil : #selector(checkForUpdates),
-                keyEquivalent: ""
-            )
-            checkItem.isEnabled = !updateChecker.isChecking
-            theMenu.addItem(checkItem)
-        }
+        theMenu.addItem(NSMenuItem(
+            title: "Check for Updates...",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        ))
 
         theMenu.addItem(NSMenuItem.separator())
 
@@ -773,11 +724,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func checkForUpdates() {
         updateChecker.checkForUpdates()
-        rebuildMenu()
-    }
-
-    @objc private func installUpdate() {
-        updateChecker.downloadUpdate()
     }
 
     @objc private func quit() {

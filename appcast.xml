@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Typing Stats</title>
+    <item>
+      <title>Version 0.0.2</title>
+      <sparkle:version>0.0.2</sparkle:version>
+      <sparkle:shortVersionString>0.0.2</sparkle:shortVersionString>
+      <pubDate>Thu, 01 Jan 2026 00:00:00 +0000</pubDate>
+      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.2/TypingStats.zip"
+                 type="application/octet-stream"
+                 sparkle:installationType="package"/>
+    </item>
+  </channel>
+</rss>

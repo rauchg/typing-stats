@@ -11,9 +11,9 @@
     <key>CFBundleDisplayName</key>
     <string>Typing Stats</string>
     <key>CFBundleVersion</key>
-    <string>0.0.2</string>
+    <string>0.0.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.0.2</string>
+    <string>0.0.3</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -21,6 +21,10 @@
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/rauchg/typing-stats/main/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
     <true/>
 </dict>
 </plist>
