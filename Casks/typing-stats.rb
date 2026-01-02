@@ -1,6 +1,6 @@
 cask "typing-stats" do
-  version "0.0.3"
-  sha256 "5de3b4d64e0937c1ddd358d8ea4e13b68f2d27079eeb229d672492e9564b15d0"
+  version "0.0.4"
+  sha256 "0d105e864c89341b8aae5629f126523db81d5a8fc3d60926f0c32b03b8638665"
 
   url "https://github.com/rauchg/typing-stats/releases/download/v#{version}/TypingStats.zip"
   name "Typing Stats"
