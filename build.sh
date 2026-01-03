@@ -5,6 +5,12 @@ APP_NAME="Typing Stats"
 BUNDLE_NAME="Typing Stats.app"
 BUILD_DIR=".build"
 
+# Get version from latest git tag
+VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.1")
+echo "Version: $VERSION"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
+
 echo "Building TypingStats..."
 swift build -c release
 

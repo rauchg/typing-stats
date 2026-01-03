@@ -2,31 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key>
-    <string>TypingStats</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.typing-stats.app</string>
-    <key>CFBundleName</key>
-    <string>Typing Stats</string>
-    <key>CFBundleDisplayName</key>
-    <string>Typing Stats</string>
-    <key>CFBundleVersion</key>
-    <string>0.0.7</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.0.7</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/rauchg/typing-stats/main/appcast.xml</string>
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <key>SUPublicEDKey</key>
-    <string>/RaPIidGEROzGioPzcxwYjENa20i6nAl2j4bTnbCcGk=</string>
+	<key>CFBundleDisplayName</key>
+	<string>Typing Stats</string>
+	<key>CFBundleExecutable</key>
+	<string>TypingStats</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.typing-stats.app</string>
+	<key>CFBundleName</key>
+	<string>Typing Stats</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.17</string>
+	<key>CFBundleVersion</key>
+	<string>0.0.17</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/rauchg/typing-stats/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>/RaPIidGEROzGioPzcxwYjENa20i6nAl2j4bTnbCcGk=</string>
 </dict>
 </plist>

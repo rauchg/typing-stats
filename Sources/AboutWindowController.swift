@@ -1,23 +1,19 @@
 import Cocoa
 import Sparkle
 
-class HyperlinkTextField: NSTextField {
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-}
-
-class AboutWindowController: NSWindowController, NSTextFieldDelegate {
+class AboutWindowController: NSWindowController {
     private let updateChecker: UpdateChecker
     private var updateStatusLabel: NSTextField!
+    private var installButton: NSButton!
     private var progressIndicator: NSProgressIndicator!
     private var checkmarkIcon: NSImageView!
+    private var statusStack: NSStackView!
 
     init(updateChecker: UpdateChecker) {
         self.updateChecker = updateChecker
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 200),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -37,83 +33,89 @@ class AboutWindowController: NSWindowController, NSTextFieldDelegate {
     private func setupUI() {
         guard let window = window else { return }
 
-        let contentView = NSView(frame: window.contentView!.bounds)
-        contentView.autoresizingMask = [.width, .height]
-        window.contentView = contentView
-
         // App icon
-        let iconView = NSImageView(frame: NSRect(x: 115, y: 120, width: 64, height: 64))
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
         if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
            let icon = NSImage(contentsOfFile: iconPath) {
             iconView.image = icon
         }
-        contentView.addSubview(iconView)
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.setContentHuggingPriority(.required, for: .vertical)
 
         // App name
         let nameLabel = NSTextField(labelWithString: "Typing Stats")
-        nameLabel.frame = NSRect(x: 0, y: 95, width: 300, height: 20)
         nameLabel.alignment = .center
         nameLabel.font = NSFont.boldSystemFont(ofSize: 14)
-        contentView.addSubview(nameLabel)
 
         // Version
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let versionLabel = NSTextField(labelWithString: "Version \(version)")
-        versionLabel.frame = NSRect(x: 0, y: 75, width: 300, height: 16)
         versionLabel.alignment = .center
         versionLabel.font = NSFont.systemFont(ofSize: 11)
         versionLabel.textColor = .secondaryLabelColor
-        contentView.addSubview(versionLabel)
 
-        // Update status container (centered)
-        let statusContainer = NSView(frame: NSRect(x: 0, y: 55, width: 300, height: 16))
-        contentView.addSubview(statusContainer)
-
-        // Progress indicator (left of text)
-        progressIndicator = NSProgressIndicator(frame: NSRect(x: 85, y: 0, width: 16, height: 16))
+        // Update status row (spinner/checkmark + label)
+        progressIndicator = NSProgressIndicator()
         progressIndicator.style = .spinning
         progressIndicator.controlSize = .small
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            progressIndicator.widthAnchor.constraint(equalToConstant: 16),
+            progressIndicator.heightAnchor.constraint(equalToConstant: 16)
+        ])
         progressIndicator.startAnimation(nil)
-        statusContainer.addSubview(progressIndicator)
 
-        // Checkmark icon (hidden initially)
-        checkmarkIcon = NSImageView(frame: NSRect(x: 85, y: 0, width: 16, height: 16))
+        checkmarkIcon = NSImageView()
+        checkmarkIcon.translatesAutoresizingMaskIntoConstraints = false
         let checkmark = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Up to date")
         checkmarkIcon.image = checkmark
         checkmarkIcon.contentTintColor = .systemGreen
         checkmarkIcon.isHidden = true
-        statusContainer.addSubview(checkmarkIcon)
+        NSLayoutConstraint.activate([
+            checkmarkIcon.widthAnchor.constraint(equalToConstant: 16),
+            checkmarkIcon.heightAnchor.constraint(equalToConstant: 16)
+        ])
 
-        // Update status label
         updateStatusLabel = NSTextField(labelWithString: "Checking for updates...")
-        updateStatusLabel.frame = NSRect(x: 105, y: 0, width: 180, height: 16)
-        updateStatusLabel.alignment = .left
         updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
         updateStatusLabel.textColor = .secondaryLabelColor
-        updateStatusLabel.delegate = self
-        statusContainer.addSubview(updateStatusLabel)
 
-        // Separator line
-        let separator = NSBox(frame: NSRect(x: 20, y: 38, width: 260, height: 1))
+        installButton = NSButton(title: "Install", target: self, action: #selector(installUpdate))
+        installButton.isBordered = false
+        installButton.font = NSFont.systemFont(ofSize: 11)
+        installButton.contentTintColor = .linkColor
+        let title = NSMutableAttributedString(string: "Install")
+        title.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: title.length))
+        title.addAttribute(.foregroundColor, value: NSColor.linkColor, range: NSRange(location: 0, length: title.length))
+        title.addAttribute(.font, value: NSFont.systemFont(ofSize: 11), range: NSRange(location: 0, length: title.length))
+        installButton.attributedTitle = title
+        installButton.isHidden = true
+
+        statusStack = NSStackView(views: [progressIndicator, checkmarkIcon, updateStatusLabel, installButton])
+        statusStack.orientation = .horizontal
+        statusStack.spacing = 6
+        statusStack.alignment = .centerY
+
+        // Separator
+        let separator = NSBox()
         separator.boxType = .separator
-        contentView.addSubview(separator)
+        separator.translatesAutoresizingMaskIntoConstraints = false
 
-        // Author
-        let authorLabel = HyperlinkTextField()
-        authorLabel.frame = NSRect(x: 0, y: 12, width: 300, height: 16)
-        authorLabel.alignment = .center
-        authorLabel.font = NSFont.systemFont(ofSize: 11)
+        // Author with link
+        let authorLabel = NSTextField()
+        authorLabel.isEditable = false
+        authorLabel.isBordered = false
+        authorLabel.drawsBackground = false
         authorLabel.isSelectable = true
         authorLabel.allowsEditingTextAttributes = true
-        authorLabel.isBezeled = false
-        authorLabel.drawsBackground = false
-        authorLabel.isEditable = false
+        authorLabel.alignment = .center
 
         let authorString = NSMutableAttributedString(string: "By Guillermo Rauch (")
         authorString.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: authorString.length))
         authorString.addAttribute(.font, value: NSFont.systemFont(ofSize: 11), range: NSRange(location: 0, length: authorString.length))
 
-        let linkString = NSMutableAttributedString(string: "source code")
+        let linkString = NSMutableAttributedString(string: "source")
         linkString.addAttribute(.link, value: "https://github.com/rauchg/typing-stats", range: NSRange(location: 0, length: linkString.length))
         linkString.addAttribute(.font, value: NSFont.systemFont(ofSize: 11), range: NSRange(location: 0, length: linkString.length))
 
@@ -129,7 +131,29 @@ class AboutWindowController: NSWindowController, NSTextFieldDelegate {
         authorString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: authorString.length))
 
         authorLabel.attributedStringValue = authorString
-        contentView.addSubview(authorLabel)
+
+        // Main vertical stack
+        let mainStack = NSStackView(views: [iconView, nameLabel, versionLabel, statusStack, separator, authorLabel])
+        mainStack.orientation = .vertical
+        mainStack.spacing = 8
+        mainStack.alignment = .centerX
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.setCustomSpacing(4, after: nameLabel)
+        mainStack.setCustomSpacing(12, after: versionLabel)
+        mainStack.setCustomSpacing(12, after: statusStack)
+        mainStack.setCustomSpacing(12, after: separator)
+
+        window.contentView?.addSubview(mainStack)
+
+        NSLayoutConstraint.activate([
+            iconView.widthAnchor.constraint(equalToConstant: 64),
+            iconView.heightAnchor.constraint(equalToConstant: 64),
+            separator.widthAnchor.constraint(equalTo: mainStack.widthAnchor, multiplier: 0.9),
+            mainStack.centerXAnchor.constraint(equalTo: window.contentView!.centerXAnchor),
+            mainStack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 20),
+            mainStack.leadingAnchor.constraint(greaterThanOrEqualTo: window.contentView!.leadingAnchor, constant: 20),
+            mainStack.trailingAnchor.constraint(lessThanOrEqualTo: window.contentView!.trailingAnchor, constant: -20)
+        ])
     }
 
     override func showWindow(_ sender: Any?) {
@@ -139,16 +163,13 @@ class AboutWindowController: NSWindowController, NSTextFieldDelegate {
 
     private func checkForUpdates() {
         updateStatusLabel.stringValue = "Checking for updates..."
+        updateStatusLabel.textColor = .secondaryLabelColor
         progressIndicator.isHidden = false
         progressIndicator.startAnimation(nil)
         checkmarkIcon.isHidden = true
 
-        // Check using Sparkle's updater
-        let updater = updateChecker.updater
+        updateChecker.updater.checkForUpdatesInBackground()
 
-        updater.checkForUpdatesInBackground()
-
-        // Poll for result after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             self?.updateCheckComplete()
         }
@@ -159,27 +180,18 @@ class AboutWindowController: NSWindowController, NSTextFieldDelegate {
         progressIndicator.isHidden = true
 
         if let version = updateChecker.availableVersion {
-            // Update found - show clickable install link
-            let linkString = NSMutableAttributedString(string: "Update available (v\(version)) – Install")
-            let installRange = (linkString.string as NSString).range(of: "Install")
-            linkString.addAttribute(.link, value: "sparkle://install", range: installRange)
-            linkString.addAttribute(.font, value: NSFont.systemFont(ofSize: 11), range: NSRange(location: 0, length: linkString.length))
-            linkString.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: installRange.location))
-            updateStatusLabel.allowsEditingTextAttributes = true
-            updateStatusLabel.isSelectable = true
-            updateStatusLabel.attributedStringValue = linkString
+            updateStatusLabel.stringValue = "v\(version) available –"
+            installButton.isHidden = false
             checkmarkIcon.isHidden = true
         } else {
-            updateStatusLabel.stringValue = "You're up to date"
+            updateStatusLabel.stringValue = "Up to date"
+            installButton.isHidden = true
             checkmarkIcon.isHidden = false
         }
     }
 
-    func control(_ control: NSControl, textView: NSTextView, clickedOnLink link: Any) -> Bool {
-        if let url = link as? String, url == "sparkle://install" {
-            updateChecker.checkForUpdates()
-            return true
-        }
-        return false
+    @objc private func installUpdate() {
+        updateChecker.checkForUpdates()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
