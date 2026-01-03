@@ -776,6 +776,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func checkForUpdates() {
         updateChecker.checkForUpdates()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quit() {
