@@ -73,7 +73,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startFileMonitor()
         _ = updateChecker // Initialize Sparkle
 
+        // Listen for update availability
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUpdateAvailable),
+            name: UpdateChecker.updateAvailableNotification,
+            object: nil
+        )
+
         checkFirstRun()
+    }
+
+    @objc private func handleUpdateAvailable() {
+        rebuildMenu()
     }
 
     private func checkFirstRun() {
@@ -577,11 +589,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         theMenu.addItem(NSMenuItem.separator())
 
-        theMenu.addItem(NSMenuItem(
-            title: "Check for Updates...",
-            action: #selector(checkForUpdates),
-            keyEquivalent: ""
-        ))
+        if let version = updateChecker.availableVersion {
+            theMenu.addItem(NSMenuItem(
+                title: "Install Update (v\(version))...",
+                action: #selector(checkForUpdates),
+                keyEquivalent: ""
+            ))
+        } else {
+            theMenu.addItem(NSMenuItem(
+                title: "Check for Updates...",
+                action: #selector(checkForUpdates),
+                keyEquivalent: ""
+            ))
+        }
 
         theMenu.addItem(NSMenuItem(
             title: "About Typing Stats",
