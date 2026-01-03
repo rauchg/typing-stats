@@ -23,7 +23,31 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
 
+      - name: Import code signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate
+          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Download and import Apple intermediate certificate
+          curl -sL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o $RUNNER_TEMP/DeveloperIDG2CA.cer
+          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH
+
       - name: Build
+        env:
+          SIGNING_IDENTITY: "Developer ID Application: Guillermo Rauch (DD5LU2JV6J)"
         run: ./build.sh
 
       - name: Create zip

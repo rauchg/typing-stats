@@ -26,9 +26,15 @@ if [ -n "$SPARKLE_PATH" ]; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$BUNDLE_NAME/Contents/MacOS/TypingStats" 2>/dev/null || true
 fi
 
-# Code sign the app bundle (required for Sparkle signature verification)
+# Code sign the app bundle
 echo "Code signing app bundle..."
-codesign --force --deep --sign - "$BUNDLE_NAME"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+    echo "Using ad-hoc signing (set SIGNING_IDENTITY for Developer ID signing)"
+else
+    echo "Using signing identity: $SIGNING_IDENTITY"
+fi
+codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
 
 echo "Build complete: $BUNDLE_NAME"
 echo ""
