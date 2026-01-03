@@ -12,7 +12,7 @@ struct DailyData: Identifiable {
 struct HistoryView: View {
     let syncData: SyncData
     let dataFileURL: URL?
-    @State private var selectedDays = 30
+    @State private var selectedDays = 7
 
     private var dailyData: [DailyData] {
         let formatter = DateFormatter()
