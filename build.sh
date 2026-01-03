@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="Typing Stats"
-BUNDLE_NAME="TypingStats.app"
+BUNDLE_NAME="Typing Stats.app"
 BUILD_DIR=".build"
 
 echo "Building TypingStats..."

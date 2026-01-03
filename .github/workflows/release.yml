@@ -17,7 +17,7 @@ jobs:
         run: ./build.sh
 
       - name: Create zip
-        run: zip -r TypingStats.zip TypingStats.app
+        run: zip -r TypingStats.zip "Typing Stats.app"
 
       - name: Get version
         id: version

@@ -7,10 +7,10 @@ cask "typing-stats" do
   desc "Track your daily keystroke statistics"
   homepage "https://github.com/rauchg/typing-stats"
 
-  app "TypingStats.app"
+  app "Typing Stats.app"
 
   postflight do
-    system "xattr", "-cr", "#{appdir}/TypingStats.app"
+    system "xattr", "-cr", "#{appdir}/Typing Stats.app"
   end
 
   zap trash: [
