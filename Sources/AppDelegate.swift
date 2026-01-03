@@ -72,6 +72,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startSyncTimer()
         startFileMonitor()
         _ = updateChecker // Initialize Sparkle
+
+        checkFirstRun()
+    }
+
+    private func checkFirstRun() {
+        let defaults = UserDefaults.standard
+        let hasSetupLoginItem = defaults.bool(forKey: "hasSetupLoginItem")
+
+        if !hasSetupLoginItem {
+            defaults.set(true, forKey: "hasSetupLoginItem")
+            do {
+                try SMAppService.mainApp.register()
+            } catch {
+                print("Failed to enable launch at login: \(error)")
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
