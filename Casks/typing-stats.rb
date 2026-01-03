@@ -1,4 +1,5 @@
 cask "typing-stats" do
+  auto_updates true
   version "0.0.13"
   sha256 "e1d4d80b86e638ad2f100a5a06970a0cf6924b0a393b66f69bfb764addf486e2"
 
