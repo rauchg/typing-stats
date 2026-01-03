@@ -26,6 +26,10 @@ if [ -n "$SPARKLE_PATH" ]; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$BUNDLE_NAME/Contents/MacOS/TypingStats" 2>/dev/null || true
 fi
 
+# Code sign the app bundle (required for Sparkle signature verification)
+echo "Code signing app bundle..."
+codesign --force --deep --sign - "$BUNDLE_NAME"
+
 echo "Build complete: $BUNDLE_NAME"
 echo ""
 echo "To install, run:"
