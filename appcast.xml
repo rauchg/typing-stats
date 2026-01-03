@@ -3,14 +3,14 @@
   <channel>
     <title>Typing Stats</title>
     <item>
-      <title>Version 0.0.13</title>
-      <sparkle:version>0.0.13</sparkle:version>
-      <sparkle:shortVersionString>0.0.13</sparkle:shortVersionString>
-      <pubDate>Sat, 03 Jan 2026 03:56:13 +0000</pubDate>
-      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.13/TypingStats.zip"
+      <title>Version 0.0.14</title>
+      <sparkle:version>0.0.14</sparkle:version>
+      <sparkle:shortVersionString>0.0.14</sparkle:shortVersionString>
+      <pubDate>Sat, 03 Jan 2026 04:07:32 +0000</pubDate>
+      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.14/TypingStats.zip"
                  type="application/octet-stream"
-                 length="4339873"
-                 sparkle:edSignature="p9584o5PLvLCRzfqbsvEMfoPMCUS5d8mY30YUn8hvfvPzJMG20mP1AXdBtqA+enjK6Vpfx/FTl6im/+gMo4rCw=="/>
+                 length="4341643"
+                 sparkle:edSignature="5SPibaKlMAa39Om3/OuxX2fBUSTfr3kfchBb6PZosQ2DL4LIkyAvzIEqa2S/z1Jolj2OKuQO1K+rTPYKNHGQBw=="/>
     </item>
   </channel>
 </rss>
