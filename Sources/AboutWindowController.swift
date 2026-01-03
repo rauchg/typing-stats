@@ -7,7 +7,7 @@ class HyperlinkTextField: NSTextField {
     }
 }
 
-class AboutWindowController: NSWindowController {
+class AboutWindowController: NSWindowController, NSTextFieldDelegate {
     private let updateChecker: UpdateChecker
     private var updateStatusLabel: NSTextField!
     private var progressIndicator: NSProgressIndicator!
@@ -86,10 +86,11 @@ class AboutWindowController: NSWindowController {
 
         // Update status label
         updateStatusLabel = NSTextField(labelWithString: "Checking for updates...")
-        updateStatusLabel.frame = NSRect(x: 105, y: 0, width: 150, height: 16)
+        updateStatusLabel.frame = NSRect(x: 105, y: 0, width: 180, height: 16)
         updateStatusLabel.alignment = .left
         updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
         updateStatusLabel.textColor = .secondaryLabelColor
+        updateStatusLabel.delegate = self
         statusContainer.addSubview(updateStatusLabel)
 
         // Separator line
@@ -157,13 +158,28 @@ class AboutWindowController: NSWindowController {
         progressIndicator.stopAnimation(nil)
         progressIndicator.isHidden = true
 
-        if updateChecker.updater.sessionInProgress {
-            // Update found, Sparkle is handling it
-            updateStatusLabel.stringValue = "Update available!"
+        if let version = updateChecker.availableVersion {
+            // Update found - show clickable install link
+            let linkString = NSMutableAttributedString(string: "Update available (v\(version)) – Install")
+            let installRange = (linkString.string as NSString).range(of: "Install")
+            linkString.addAttribute(.link, value: "sparkle://install", range: installRange)
+            linkString.addAttribute(.font, value: NSFont.systemFont(ofSize: 11), range: NSRange(location: 0, length: linkString.length))
+            linkString.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: installRange.location))
+            updateStatusLabel.allowsEditingTextAttributes = true
+            updateStatusLabel.isSelectable = true
+            updateStatusLabel.attributedStringValue = linkString
             checkmarkIcon.isHidden = true
         } else {
             updateStatusLabel.stringValue = "You're up to date"
             checkmarkIcon.isHidden = false
         }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, clickedOnLink link: Any) -> Bool {
+        if let url = link as? String, url == "sparkle://install" {
+            updateChecker.checkForUpdates()
+            return true
+        }
+        return false
     }
 }
