@@ -13,15 +13,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update Info.plist version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
+
       - name: Build
         run: ./build.sh
 
       - name: Create zip
         run: zip -r TypingStats.zip "Typing Stats.app"
-
-      - name: Get version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Download Sparkle
         run: |
