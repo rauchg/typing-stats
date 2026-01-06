@@ -7,10 +7,15 @@ BUILD_DIR=".build"
 
 # Parse arguments
 RELEASE_BUILD=false
+NOTARIZE=false
 for arg in "$@"; do
     case $arg in
         --release)
             RELEASE_BUILD=true
+            shift
+            ;;
+        --notarize)
+            NOTARIZE=true
             shift
             ;;
     esac
@@ -70,6 +75,34 @@ if [ "$SIGNING_IDENTITY" = "-" ]; then
     codesign --force --deep --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
 else
     codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+fi
+
+# Notarize if requested
+if [ "$NOTARIZE" = true ]; then
+    if [ -z "$APPLE_ID" ] || [ -z "$APPLE_ID_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+        echo "Error: Notarization requires APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID environment variables"
+        exit 1
+    fi
+
+    echo "Notarizing app..."
+    # Create zip for notarization
+    ditto -c -k --keepParent "$BUNDLE_NAME" "${BUNDLE_NAME%.app}.zip"
+
+    # Submit for notarization
+    xcrun notarytool submit "${BUNDLE_NAME%.app}.zip" \
+        --apple-id "$APPLE_ID" \
+        --password "$APPLE_ID_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" \
+        --wait
+
+    # Staple the notarization ticket
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$BUNDLE_NAME"
+
+    # Clean up zip
+    rm "${BUNDLE_NAME%.app}.zip"
+
+    echo "Notarization complete!"
 fi
 
 echo "Build complete: $BUNDLE_NAME"

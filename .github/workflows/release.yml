@@ -45,10 +45,13 @@ jobs:
           curl -sL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o $RUNNER_TEMP/DeveloperIDG2CA.cer
           security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH || true
 
-      - name: Build
+      - name: Build and notarize
         env:
           SIGNING_IDENTITY: "Developer ID Application: Guillermo Rauch (DD5LU2JV6J)"
-        run: ./build.sh --release
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: "DD5LU2JV6J"
+        run: ./build.sh --release --notarize
 
       - name: Create zip
         run: zip -r TypingStats.zip "Typing Stats.app"
