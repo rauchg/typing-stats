@@ -29,6 +29,11 @@ class UpdateChecker: NSObject, SPUUpdaterDelegate {
         updater.checkForUpdates()
     }
 
+    func installUpdate() {
+        // Trigger background update which will auto-install with SUAutomaticallyUpdate=true
+        updater.checkForUpdatesInBackground()
+    }
+
     // MARK: - SPUUpdaterDelegate
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
