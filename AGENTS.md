@@ -3,7 +3,13 @@
 ## Repo specs
 - Written in Swift using SwiftUI for the user interface.
 - No xcode garbage. I want to build from CLI
-- When you rebuild, quit and relaunch the app
+- **Build:**
+  - `./build.sh` - dev build (yellow keyboard icon, "-dev" version suffix)
+  - `./build.sh --release` - production build
+- **Build, deploy, and restart:**
+  ```
+  ./build.sh && cp -r "Typing Stats.app" /Applications/ && killall "Typing Stats" 2>/dev/null; open "/Applications/Typing Stats.app"
+  ```
 
 ## Product specs
 - It should show the number of keystrokes in the menubar.

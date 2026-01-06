@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var fileMonitor: DispatchSourceFileSystemObject?
     private var lastSyncTime: Date?
     private var updateChecker = UpdateChecker.shared
+    private var updateDotLayer: CALayer?
 
     private let deviceID: String = {
         let defaults = UserDefaults.standard
@@ -85,6 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func handleUpdateAvailable() {
+        setStatusItemUpdateBadgeVisible(true)
         rebuildMenu()
     }
 
@@ -456,7 +458,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let scale: CGFloat = 18.0 / 24.0
             let lineWidth: CGFloat = 1.5
 
-            NSColor.black.setStroke()
+            // Use yellow for dev builds, black for release
+            let color = isDevBuild ? NSColor.systemYellow : NSColor.black
+            color.setStroke()
 
             let bodyRect = NSRect(x: 3 * scale, y: 6 * scale, width: 18 * scale, height: 12 * scale)
             let body = NSBezierPath(roundedRect: bodyRect, xRadius: 2 * scale, yRadius: 2 * scale)
@@ -486,14 +490,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     height: dotRadius * 2
                 )
                 let dot = NSBezierPath(ovalIn: dotRect)
-                NSColor.black.setFill()
+                color.setFill()
                 dot.fill()
             }
 
             return true
         }
 
-        image.isTemplate = true
+        // Only use template mode for release builds (so they adapt to dark mode)
+        // Dev builds use explicit yellow color
+        image.isTemplate = !isDevBuild
         return image
     }
 
@@ -533,6 +539,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildMenu() {
         theMenu.removeAllItems()
+
+        // Update blue dot visibility based on update availability
+        setStatusItemUpdateBadgeVisible(updateChecker.updateAvailable)
 
         if !hasAccessibilityPermission {
             let permissionItem = NSMenuItem(
@@ -666,6 +675,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 return syncData
             }
+
+            // Load the merged data and update the menu bar title
+            let syncData = loadSyncData(from: url)
+            let newTotal = syncData.totalCount(for: today)
+            if newTotal != totalKeystrokeCount {
+                totalKeystrokeCount = newTotal
+                updateMenuBarTitle()
+            }
         }
         rebuildMenu()
     }
@@ -684,6 +701,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ? self.createKeyboardIcon()
                 : self.createWarningIcon()
         }
+    }
+
+    private func setStatusItemUpdateBadgeVisible(_ visible: Bool) {
+        guard let button = statusItem.button else { return }
+        button.wantsLayer = true
+        if updateDotLayer == nil {
+            let diameter: CGFloat = 6
+            let layer = CALayer()
+            layer.backgroundColor = NSColor.systemBlue.cgColor
+            layer.cornerRadius = diameter / 2
+            layer.borderWidth = 1
+            layer.borderColor = NSColor.white.cgColor
+            // Position near top-right with a small inset
+            layer.frame = CGRect(
+                x: button.bounds.width - diameter - 2,
+                y: button.bounds.height - diameter - 2,
+                width: diameter,
+                height: diameter
+            )
+            layer.autoresizingMask = [.layerMinXMargin, .layerMinYMargin]
+            button.layer?.addSublayer(layer)
+            updateDotLayer = layer
+        }
+        updateDotLayer?.isHidden = !visible
     }
 
     // MARK: - Menu Actions

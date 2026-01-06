@@ -48,7 +48,7 @@ jobs:
       - name: Build
         env:
           SIGNING_IDENTITY: "Developer ID Application: Guillermo Rauch (DD5LU2JV6J)"
-        run: ./build.sh
+        run: ./build.sh --release
 
       - name: Create zip
         run: zip -r TypingStats.zip "Typing Stats.app"

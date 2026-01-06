@@ -5,14 +5,30 @@ APP_NAME="Typing Stats"
 BUNDLE_NAME="Typing Stats.app"
 BUILD_DIR=".build"
 
+# Parse arguments
+RELEASE_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --release)
+            RELEASE_BUILD=true
+            shift
+            ;;
+    esac
+done
+
 # Get version from latest git tag
 VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.1")
 echo "Version: $VERSION"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
 
-echo "Building TypingStats..."
-swift build -c release
+if [ "$RELEASE_BUILD" = true ]; then
+    echo "Building TypingStats (RELEASE)..."
+    swift build -c release
+else
+    echo "Building TypingStats (DEV)..."
+    swift build -c release -Xswiftc -DDEV_BUILD
+fi
 
 echo "Creating app bundle..."
 rm -rf "$BUNDLE_NAME"
@@ -40,7 +56,21 @@ if [ "$SIGNING_IDENTITY" = "-" ]; then
 else
     echo "Using signing identity: $SIGNING_IDENTITY"
 fi
-codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+
+# Re-sign Sparkle framework first to match our signing identity
+if [ -d "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework" ]; then
+    echo "Re-signing Sparkle framework..."
+    codesign --force --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+    codesign --force --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
+    find "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" -name "*.xpc" -exec codesign --force --sign "$SIGNING_IDENTITY" {} \;
+fi
+
+# Use hardened runtime only for proper Developer ID signing (not ad-hoc)
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+    codesign --force --deep --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+else
+    codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+fi
 
 echo "Build complete: $BUNDLE_NAME"
 echo ""
