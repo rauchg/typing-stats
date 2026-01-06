@@ -192,7 +192,8 @@ class AboutWindowController: NSWindowController {
     }
 
     @objc private func installUpdate() {
-        updateChecker.checkForUpdates()
-        NSApp.activate(ignoringOtherApps: true)
+        updateChecker.installUpdate()
+        // Close the About window - update will install in background and relaunch
+        window?.close()
     }
 }
