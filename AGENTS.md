@@ -34,3 +34,7 @@
 - When I hold the option key and the menu is open, render a special debug section that shows last sync, and a button to 'reset today'
 - View History dialog should show a scrollable list of dates and counts. And a chart at the top with a dropdown for the number of days
 - In the view history dialog, give me a button to open the iCloud Drive folder where the data is stored
+- Track which apps keystrokes are made in. Show per-app breakdown in the History view with color-coded stacked bars
+- Show top 5 apps individually, group the rest as "Others". Calculate top 5 based on the selected time period (7/30/60 days)
+- Horizontal legend below the chart shows app colors. Legend items act as toggles to filter apps from the stats
+- History view auto-refreshes every 5 minutes (matching menu bar sync) and on window focus
