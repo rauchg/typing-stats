@@ -6,6 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var theMenu: NSMenu!
     private var localKeystrokeCount: Int = 0
+    private var localAppCounts: [String: Int] = [:]  // bundleID -> count for today
     private var totalKeystrokeCount: Int = 0
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -122,6 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let today = todayString()
         let finalCount = localKeystrokeCount
 
+        let finalAppCounts = localAppCounts
         coordinatedSync(to: url) { existingData in
             var syncData = existingData
             if syncData.devices[self.deviceID] == nil {
@@ -129,7 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             let existingCount = syncData.devices[self.deviceID]?.count(for: today) ?? 0
             if finalCount > existingCount {
-                syncData.devices[self.deviceID]?.setCount(finalCount, for: today)
+                syncData.devices[self.deviceID]?.setCount(finalCount, for: today, appCounts: finalAppCounts.isEmpty ? nil : finalAppCounts)
             }
             return syncData
         }
@@ -143,14 +145,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
            let state = try? JSONDecoder().decode(LocalState.self, from: data) {
             if state.date == todayString() {
                 localKeystrokeCount = state.count
+                localAppCounts = state.appCounts ?? [:]
             } else {
                 localKeystrokeCount = 0
+                localAppCounts = [:]
             }
         }
     }
 
     private func saveLocalCount() {
-        let state = LocalState(date: todayString(), count: localKeystrokeCount)
+        let state = LocalState(date: todayString(), count: localKeystrokeCount, appCounts: localAppCounts.isEmpty ? nil : localAppCounts)
         if let data = try? JSONEncoder().encode(state) {
             UserDefaults.standard.set(data, forKey: localDefaultsKey)
         }
@@ -177,11 +181,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             if self.localKeystrokeCount == 0 {
                 // Fresh start for today - reset cloud to 0, don't pull corrupted data
-                updated.devices[self.deviceID]?.setCount(0, for: today)
+                updated.devices[self.deviceID]?.setCount(0, for: today, appCounts: nil)
             } else if self.localKeystrokeCount > existingCount {
-                updated.devices[self.deviceID]?.setCount(self.localKeystrokeCount, for: today)
+                updated.devices[self.deviceID]?.setCount(self.localKeystrokeCount, for: today, appCounts: self.localAppCounts.isEmpty ? nil : self.localAppCounts)
             } else {
                 self.localKeystrokeCount = existingCount
+                // Also load app counts from cloud if available
+                let cloudAppCounts = updated.devices[self.deviceID]?.appCounts(for: today) ?? [:]
+                if !cloudAppCounts.isEmpty {
+                    self.localAppCounts = cloudAppCounts
+                }
             }
 
             updated.pruneAllDevices(keepingDays: 60)
@@ -252,6 +261,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let today = todayString()
         let currentLocalCount = localKeystrokeCount
+        let currentAppCounts = localAppCounts
 
         syncQueue.async { [weak self] in
             guard let self = self else { return }
@@ -266,7 +276,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let existingCount = syncData.devices[self.deviceID]?.count(for: today) ?? 0
 
                 if currentLocalCount > existingCount {
-                    syncData.devices[self.deviceID]?.setCount(currentLocalCount, for: today)
+                    syncData.devices[self.deviceID]?.setCount(currentLocalCount, for: today, appCounts: currentAppCounts.isEmpty ? nil : currentAppCounts)
                 }
 
                 return syncData
@@ -383,6 +393,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
            let state = try? JSONDecoder().decode(LocalState.self, from: data),
            state.date != today {
             localKeystrokeCount = 0
+            localAppCounts = [:]
             totalKeystrokeCount = 0
             loadAndReconcileCounts()
         }
@@ -664,6 +675,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             saveLocalCount()
             let today = todayString()
             let currentCount = localKeystrokeCount
+            let currentAppCounts = localAppCounts
             coordinatedSync(to: url, forceMerge: false) { existingData in
                 var syncData = existingData
                 if syncData.devices[self.deviceID] == nil {
@@ -671,7 +683,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 let existingCount = syncData.devices[self.deviceID]?.count(for: today) ?? 0
                 if currentCount > existingCount {
-                    syncData.devices[self.deviceID]?.setCount(currentCount, for: today)
+                    syncData.devices[self.deviceID]?.setCount(currentCount, for: today, appCounts: currentAppCounts.isEmpty ? nil : currentAppCounts)
                 }
                 return syncData
             }
@@ -741,6 +753,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         saveLocalCount()
         let today = todayString()
         let currentCount = localKeystrokeCount
+        let currentAppCounts = localAppCounts
         coordinatedSync(to: url, forceMerge: false) { existingData in
             var syncData = existingData
             if syncData.devices[self.deviceID] == nil {
@@ -748,7 +761,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             let existingCount = syncData.devices[self.deviceID]?.count(for: today) ?? 0
             if currentCount > existingCount {
-                syncData.devices[self.deviceID]?.setCount(currentCount, for: today)
+                syncData.devices[self.deviceID]?.setCount(currentCount, for: today, appCounts: currentAppCounts.isEmpty ? nil : currentAppCounts)
             }
             return syncData
         }
@@ -770,6 +783,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if alert.runModal() == .alertFirstButtonReturn {
             localKeystrokeCount = 0
+            localAppCounts = [:]
             saveLocalCount()
 
             guard let url = syncFileURL else { return }
@@ -780,7 +794,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if syncData.devices[self.deviceID] == nil {
                     syncData.devices[self.deviceID] = DeviceData()
                 }
-                syncData.devices[self.deviceID]?.setCount(0, for: today)
+                syncData.devices[self.deviceID]?.setCount(0, for: today, appCounts: nil)
                 return syncData
             }
 
@@ -854,6 +868,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func handleKeyEvent() {
         checkDayChange()
+
+        // Track which app received this keystroke
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
+        localAppCounts[bundleID, default: 0] += 1
 
         localKeystrokeCount += 1
         totalKeystrokeCount += 1
