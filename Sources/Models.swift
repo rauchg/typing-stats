@@ -106,6 +106,80 @@ struct SyncData: Codable {
         return (maxCount, date)
     }
 
+    /// Consecutive days ending today, or yesterday when today has no typing yet.
+    func currentStreak(from referenceDate: Date = Date()) -> Int {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let calendar = Calendar.current
+
+        let referenceDateString = formatter.string(from: referenceDate)
+        let startOffset = totalCount(for: referenceDateString) > 0 ? 0 : 1
+
+        var streak = 0
+        var dayOffset = startOffset
+        while let date = calendar.date(byAdding: .day, value: -dayOffset, to: referenceDate) {
+            let dateString = formatter.string(from: date)
+            if totalCount(for: dateString) > 0 {
+                streak += 1
+                dayOffset += 1
+            } else {
+                break
+            }
+
+            if dayOffset > 3650 { break }
+        }
+
+        return streak
+    }
+
+    /// Longest run of consecutive days with totalCount > 0.
+    func longestStreak() -> (count: Int, endDate: String)? {
+        var allDates = Set<String>()
+        for device in devices.values {
+            allDates.formUnion(device.dailyCounts.keys)
+        }
+
+        let sortedDates = allDates.sorted()
+        guard !sortedDates.isEmpty else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let calendar = Calendar.current
+
+        var bestCount = 0
+        var bestEndDate: String?
+        var runCount = 0
+        var previousDate: Date?
+
+        for dateString in sortedDates {
+            guard let date = formatter.date(from: dateString) else { continue }
+
+            if totalCount(for: dateString) == 0 {
+                runCount = 0
+                previousDate = nil
+                continue
+            }
+
+            if let previous = previousDate,
+               let expectedDate = calendar.date(byAdding: .day, value: 1, to: previous),
+               calendar.isDate(expectedDate, inSameDayAs: date) {
+                runCount += 1
+            } else {
+                runCount = 1
+            }
+
+            previousDate = date
+
+            if runCount > bestCount {
+                bestCount = runCount
+                bestEndDate = dateString
+            }
+        }
+
+        guard let endDate = bestEndDate else { return nil }
+        return (bestCount, endDate)
+    }
+
     func averageCount(forLastDays days: Int, from date: Date) -> Double {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
