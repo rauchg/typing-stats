@@ -133,6 +133,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if finalCount > existingCount {
                 syncData.devices[self.deviceID]?.setCount(finalCount, for: today, appCounts: finalAppCounts.isEmpty ? nil : finalAppCounts)
             }
+            syncData.pruneAllDevices(keepingDays: 365)
             return syncData
         }
     }
@@ -193,7 +194,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
 
-            updated.pruneAllDevices(keepingDays: 60)
+            updated.pruneAllDevices(keepingDays: 365)
             self.totalKeystrokeCount = updated.totalCount(for: today)
             self.saveLocalCount()
             return updated

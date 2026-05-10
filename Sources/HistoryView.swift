@@ -272,6 +272,107 @@ struct ChartTooltip: View {
     }
 }
 
+// MARK: - Heatmap Section (Isolated to prevent re-renders)
+
+struct HeatmapSection: View, Equatable {
+    let chartData: [DailyDataWithApps]
+    @State private var hoveredDay: DailyDataWithApps?
+    @State private var tooltipPosition: CGPoint = .zero
+
+    private static let heatmapRows = 7
+    private static let heatmapColumns = 52
+    private static let cellSpacing: CGFloat = 2
+    private static let tooltipWidth: CGFloat = 140
+
+    private var heatmapData: [DailyDataWithApps] {
+        Array(chartData.suffix(Self.heatmapRows * Self.heatmapColumns))
+    }
+
+    private var scaleMaxCount: Int {
+        let counts = heatmapData.map(\.totalCount).filter { $0 > 0 }.sorted()
+        guard !counts.isEmpty else { return 1 }
+        let percentileIndex = min(counts.count - 1, Int(Double(counts.count - 1) * 0.9))
+        return max(1, counts[percentileIndex])
+    }
+
+    static func == (lhs: HeatmapSection, rhs: HeatmapSection) -> Bool {
+        lhs.chartData == rhs.chartData
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Grid(horizontalSpacing: Self.cellSpacing, verticalSpacing: Self.cellSpacing) {
+                    ForEach(0..<Self.heatmapRows, id: \.self) { row in
+                        GridRow {
+                            ForEach(0..<Self.heatmapColumns, id: \.self) { column in
+                                let index = column * Self.heatmapRows + row
+                                if index < heatmapData.count {
+                                    let day = heatmapData[index]
+                                    heatmapCell(for: day, in: geometry)
+                                } else {
+                                    Color.clear
+                                        .frame(width: cellSize(in: geometry), height: cellSize(in: geometry))
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+                if let day = hoveredDay {
+                    ChartTooltip(day: day)
+                        .offset(
+                            x: max(0, min(tooltipPosition.x - Self.tooltipWidth / 2, geometry.size.width - Self.tooltipWidth)),
+                            y: max(0, tooltipPosition.y - 74)
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
+            .coordinateSpace(name: "heatmap")
+        }
+        .frame(height: 150)
+    }
+
+    private func heatmapCell(for day: DailyDataWithApps, in geometry: GeometryProxy) -> some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(intensityColor(for: day.totalCount, max: scaleMaxCount))
+            .frame(width: cellSize(in: geometry), height: cellSize(in: geometry))
+            .overlay(
+                GeometryReader { cellGeometry in
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active:
+                                let frame = cellGeometry.frame(in: .named("heatmap"))
+                                hoveredDay = day
+                                tooltipPosition = CGPoint(x: frame.midX, y: frame.minY)
+                            case .ended:
+                                hoveredDay = nil
+                            }
+                        }
+                }
+            )
+            .help("\(day.dateString): \(day.totalCount) keystrokes")
+    }
+
+    private func cellSize(in geometry: GeometryProxy) -> CGFloat {
+        let availableWidth = geometry.size.width - CGFloat(Self.heatmapColumns - 1) * Self.cellSpacing
+        return max(4, floor(availableWidth / CGFloat(Self.heatmapColumns)))
+    }
+
+    private func intensityColor(for count: Int, max: Int) -> Color {
+        guard count > 0 else { return Color.secondary.opacity(0.12) }
+
+        let ratio = Double(count) / Double(max)
+        if ratio < 0.25 { return Color.accentColor.opacity(0.25) }
+        if ratio < 0.5 { return Color.accentColor.opacity(0.5) }
+        if ratio < 0.75 { return Color.accentColor.opacity(0.75) }
+        return Color.accentColor
+    }
+}
+
 // MARK: - History View
 
 struct HistoryView: View {
@@ -423,13 +524,18 @@ struct HistoryView: View {
                         Text("7 days").tag(7)
                         Text("30 days").tag(30)
                         Text("60 days").tag(60)
+                        Text("Year").tag(365)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 200)
+                    .frame(width: 260)
                 }
                 
-                // Stacked bar chart (isolated to prevent flicker on row expand)
-                EquatableView(content: ChartSection(chartData: chartData, selectedDays: selectedDays))
+                // Chart section is isolated to prevent flicker on row expand.
+                if selectedDays == 365 {
+                    EquatableView(content: HeatmapSection(chartData: chartData))
+                } else {
+                    EquatableView(content: ChartSection(chartData: chartData, selectedDays: selectedDays))
+                }
                 
                 // Legend with toggle filtering (uses cached top apps)
                 HStack(spacing: 16) {
