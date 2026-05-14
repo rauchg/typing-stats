@@ -1,5 +1,7 @@
 import Cocoa
+#if !DEV_BUILD
 import Sparkle
+#endif
 
 class AboutWindowController: NSWindowController {
     private let updateChecker: UpdateChecker
@@ -163,6 +165,12 @@ class AboutWindowController: NSWindowController {
     }
 
     private func checkForUpdates() {
+        #if DEV_BUILD
+        progressIndicator.isHidden = true
+        checkmarkIcon.isHidden = true
+        updateStatusLabel.stringValue = "Updates disabled (dev build)"
+        installButton.isHidden = true
+        #else
         updateStatusLabel.stringValue = "Checking for updates..."
         updateStatusLabel.textColor = .secondaryLabelColor
         progressIndicator.isHidden = false
@@ -174,6 +182,7 @@ class AboutWindowController: NSWindowController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             self?.updateCheckComplete()
         }
+        #endif
     }
 
     private func updateCheckComplete() {

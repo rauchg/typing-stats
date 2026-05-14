@@ -1,41 +1,52 @@
 import Foundation
+#if !DEV_BUILD
 import Sparkle
+#endif
 
-class UpdateChecker: NSObject, SPUUpdaterDelegate {
+class UpdateChecker: NSObject {
     static let shared = UpdateChecker()
     static let updateAvailableNotification = Notification.Name("UpdateAvailable")
 
-    private var updaterController: SPUStandardUpdaterController!
     private(set) var availableVersion: String?
 
     var updateAvailable: Bool {
         availableVersion != nil
     }
 
+    #if !DEV_BUILD
+    private var updaterController: SPUStandardUpdaterController!
+
     var updater: SPUUpdater {
         updaterController.updater
     }
+    #endif
 
     private override init() {
         super.init()
+        #if !DEV_BUILD
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
+        #endif
     }
 
     func checkForUpdates() {
+        #if !DEV_BUILD
         updater.checkForUpdates()
+        #endif
     }
 
     func installUpdate() {
-        // Trigger background update which will auto-install with SUAutomaticallyUpdate=true
+        #if !DEV_BUILD
         updater.checkForUpdatesInBackground()
+        #endif
     }
+}
 
-    // MARK: - SPUUpdaterDelegate
-
+#if !DEV_BUILD
+extension UpdateChecker: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         availableVersion = item.displayVersionString
         NotificationCenter.default.post(name: Self.updateAvailableNotification, object: self)
@@ -45,3 +56,4 @@ class UpdateChecker: NSObject, SPUUpdaterDelegate {
         availableVersion = nil
     }
 }
+#endif

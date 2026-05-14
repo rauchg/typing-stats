@@ -4,6 +4,14 @@ A macOS menu bar app that tracks your daily keystroke statistics across devices 
 
 ## Install
 
+### Build from source
+
+```bash
+make dev-install
+```
+
+### Homebrew
+
 ```bash
 brew tap rauchg/typing-stats https://github.com/rauchg/typing-stats
 brew install --cask rauchg/typing-stats/typing-stats
