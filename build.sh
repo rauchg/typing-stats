@@ -77,11 +77,15 @@ if [ -d "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework" ]; then
     find "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" -name "*.xpc" -exec codesign --force --sign "$SIGNING_IDENTITY" {} \;
 fi
 
-# Use hardened runtime only for proper Developer ID signing (not ad-hoc)
+# Use hardened runtime only for proper Developer ID signing (not ad-hoc).
+# The iCloud container entitlement is only applied for real Developer ID builds —
+# ad-hoc signing can't carry iCloud entitlements (needs a provisioning profile),
+# so those builds fall back to local Application Support storage at runtime.
+ENTITLEMENTS="TypingStats.entitlements"
 if [ "$SIGNING_IDENTITY" = "-" ]; then
     codesign --force --deep --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
 else
-    codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+    codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
 fi
 
 # Notarize if requested
