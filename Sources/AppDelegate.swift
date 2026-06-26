@@ -31,23 +31,65 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return newID
     }()
 
+    // Returns the app's private iCloud ("ubiquity") container Documents directory,
+    // or nil if iCloud is unavailable / the entitlement is missing.
+    // This is the app's own container, so reading/writing here never requires a
+    // Files & Folders / iCloud Drive permission prompt.
+    private func iCloudContainerDocumentsURL() -> URL? {
+        guard let base = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
+            return nil
+        }
+        let docsURL = base.appendingPathComponent("Documents")
+        try? FileManager.default.createDirectory(at: docsURL, withIntermediateDirectories: true)
+        return docsURL
+    }
+
+    // Legacy location: a folder inside the user's *shared* iCloud Drive
+    // (com~apple~CloudDocs). macOS gates non-sandboxed access to this with a
+    // permission prompt that can't be reliably triggered, which is why we moved off it.
+    private var legacySharedDriveFileURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory()
+            + "/Library/Mobile Documents/com~apple~CloudDocs/TypingStats/typing-stats.json")
+    }
+
     private var syncFileURL: URL? {
         let fileManager = FileManager.default
-        if let iCloudURL = fileManager.url(forUbiquityContainerIdentifier: nil) {
-            let docsURL = iCloudURL.appendingPathComponent("Documents")
-            try? fileManager.createDirectory(at: docsURL, withIntermediateDirectories: true)
+        // Preferred: the app's own iCloud container (syncs across devices, no TCC prompt).
+        if let docsURL = iCloudContainerDocumentsURL() {
             return docsURL.appendingPathComponent("typing-stats.json")
         }
-        let cloudDocsPath = NSHomeDirectory() + "/Library/Mobile Documents/com~apple~CloudDocs"
-        if fileManager.fileExists(atPath: cloudDocsPath) {
-            let appFolder = URL(fileURLWithPath: cloudDocsPath).appendingPathComponent("TypingStats")
-            try? fileManager.createDirectory(at: appFolder, withIntermediateDirectories: true)
-            return appFolder.appendingPathComponent("typing-stats.json")
-        }
+        // Fallback: local Application Support (no cross-device sync, but no prompts either).
+        // Note: we intentionally do NOT fall back to the shared iCloud Drive folder anymore.
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let appFolder = appSupport.appendingPathComponent("TypingStats")
         try? fileManager.createDirectory(at: appFolder, withIntermediateDirectories: true)
         return appFolder.appendingPathComponent("typing-stats.json")
+    }
+
+    // One-time migration of data from the old shared iCloud Drive location into the
+    // app's private container. Merges (rather than overwrites) so nothing is lost.
+    private func migrateFromSharedDriveIfNeeded() {
+        let migratedKey = "didMigrateToAppContainer"
+        // Only migrate once we actually have a private container to migrate *into*.
+        guard let containerDocs = iCloudContainerDocumentsURL() else { return }
+        if UserDefaults.standard.bool(forKey: migratedKey) { return }
+
+        let legacyURL = legacySharedDriveFileURL
+        guard FileManager.default.fileExists(atPath: legacyURL.path) else {
+            UserDefaults.standard.set(true, forKey: migratedKey)
+            return
+        }
+
+        let legacyData = loadSyncData(from: legacyURL)
+        if !legacyData.devices.isEmpty {
+            let newURL = containerDocs.appendingPathComponent("typing-stats.json")
+            coordinatedSync(to: newURL) { existing in
+                var merged = existing
+                merged.merge(with: legacyData)
+                return merged
+            }
+        }
+        UserDefaults.standard.set(true, forKey: migratedKey)
     }
 
     private let localDefaultsKey = "localKeystrokeData"
@@ -60,6 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         loadLocalCount()
+        migrateFromSharedDriveIfNeeded()
         loadAndReconcileCounts()
 
         hasAccessibilityPermission = AXIsProcessTrusted()
