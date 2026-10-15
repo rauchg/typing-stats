@@ -10,8 +10,8 @@ cask "typing-stats" do
 
   app "Typing Stats.app"
 
-  postflight do
-    system "xattr", "-cr", "#{appdir}/Typing Stats.app"
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Typing Stats.app"]
   end
 
   zap trash: [
