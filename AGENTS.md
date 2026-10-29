@@ -38,3 +38,6 @@
 - Show top 5 apps individually, group the rest as "Others". Calculate top 5 based on the selected time period (7/30/60 days)
 - Horizontal legend below the chart shows app colors. Legend items act as toggles to filter apps from the stats
 - History view auto-refreshes every 5 minutes (matching menu bar sync) and on window focus
+- Count text inserted by dictation apps (Aqua Voice, Willow, Wispr Flow, …). They paste via the clipboard plus a synthetic Cmd+V: detect it in the event tap (source PID ≠ 0, owning app on the allowlist in `DictationSources`), count the clipboard text's characters, and never store the text. Dictated characters are included in the total and also labeled (`dictatedCount`, `dictatedAppCounts`) so the History view can filter All / Typed / Dictated. Other synthetic keys from dictation apps are ignored.
+- Show typing and speaking WPM (5 chars = 1 word). Typing time = gaps ≤ 2s between hardware keystrokes. Speaking time = how long the dictation app's process held the mic open (CoreAudio per-process input, macOS 14.2+), paired with the paste that follows. Utterances that can't be timed still count as dictated but are excluded from speaking WPM.
+- Apple's built-in Dictation inserts text without key events or the clipboard, so it isn't counted.

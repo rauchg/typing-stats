@@ -1,4 +1,4 @@
-import SwiftUI
+import Cocoa
 
 // Helper to detect dev builds (set via -DDEV_BUILD compiler flag)
 var isDevBuild: Bool {
@@ -9,13 +9,15 @@ var isDevBuild: Bool {
     #endif
 }
 
+// Plain AppKit entry point. A SwiftUI `App` needs at least one Scene, and its placeholder
+// `Settings` scene would pop up an empty "Settings" window whenever the last real window closed.
 @main
-struct TypingStatsApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+enum TypingStatsMain {
+    private static let delegate = AppDelegate()
 
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
+    static func main() {
+        let app = NSApplication.shared
+        app.delegate = delegate
+        app.run()
     }
 }

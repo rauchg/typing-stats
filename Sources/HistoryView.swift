@@ -8,14 +8,22 @@ import Combine
 class HistoryDataStore: ObservableObject {
     @Published var syncData: SyncData
     let dataFileURL: URL?
+    /// Live data from the app (disk data merged with this device's unsynced counts).
+    /// Preferred over re-reading the file, which lags until the next sync.
+    private let liveData: (() -> SyncData)?
     private let fileCoordinator = NSFileCoordinator()
     
-    init(syncData: SyncData, dataFileURL: URL?) {
+    init(syncData: SyncData, dataFileURL: URL?, liveData: (() -> SyncData)? = nil) {
         self.syncData = syncData
         self.dataFileURL = dataFileURL
+        self.liveData = liveData
     }
     
     func reload() {
+        if let liveData = liveData {
+            syncData = liveData()
+            return
+        }
         guard let url = dataFileURL else { return }
         var coordinatorError: NSError?
         
@@ -277,13 +285,14 @@ struct ChartTooltip: View {
 struct HistoryView: View {
     @ObservedObject var dataStore: HistoryDataStore
     @State private var selectedDays = 7
+    @State private var filter: CountFilter = .all
     @State private var hiddenApps: Set<String> = []  // bundleIDs to hide from stats
     @State private var expandedDays: Set<String> = []  // dateStrings of expanded rows
     @State private var cachedTopApps: [(bundleID: String, count: Int, color: Color)] = []
 
     // Top 5 apps for current period + Others (including untracked)
     private func computeTopAppsForPeriod() -> [(bundleID: String, count: Int, color: Color)] {
-        let appCounts = dataStore.syncData.totalAppCounts(forDays: selectedDays, from: Date())
+        let appCounts = dataStore.syncData.totalAppCounts(forDays: selectedDays, from: Date(), filter: filter)
         let sorted = appCounts.sorted { $0.value > $1.value }
         
         // Calculate total keystrokes vs tracked keystrokes for the period
@@ -295,8 +304,8 @@ struct HistoryView: View {
         for i in 0..<selectedDays {
             guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { continue }
             let dateString = formatter.string(from: date)
-            totalKeystrokes += dataStore.syncData.totalCount(for: dateString)
-            trackedKeystrokes += dataStore.syncData.totalAppCounts(for: dateString).values.reduce(0, +)
+            totalKeystrokes += dataStore.syncData.totalCount(for: dateString, filter: filter)
+            trackedKeystrokes += dataStore.syncData.totalAppCounts(for: dateString, filter: filter).values.reduce(0, +)
         }
         let untrackedCount = totalKeystrokes - trackedKeystrokes
         
@@ -337,8 +346,8 @@ struct HistoryView: View {
         for i in 0..<selectedDays {
             guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { continue }
             let dateString = formatter.string(from: date)
-            let totalCount = dataStore.syncData.totalCount(for: dateString)
-            let dayAppCounts = dataStore.syncData.totalAppCounts(for: dateString)
+            let totalCount = dataStore.syncData.totalCount(for: dateString, filter: filter)
+            let dayAppCounts = dataStore.syncData.totalAppCounts(for: dateString, filter: filter)
             
             var breakdown: [AppBreakdown] = []
             var othersCount = 0
@@ -427,6 +436,22 @@ struct HistoryView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 200)
                 }
+
+                HStack {
+                    Picker("", selection: $filter) {
+                        ForEach(CountFilter.allCases, id: \.self) { f in
+                            Text(f.rawValue).tag(f)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                    .help("Dictated = text inserted by dictation apps (Aqua Voice, Willow, …), counted in characters")
+                    Spacer()
+                    Text(speedSummary)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                }
                 
                 // Stacked bar chart (isolated to prevent flicker on row expand)
                 EquatableView(content: ChartSection(chartData: chartData, selectedDays: selectedDays))
@@ -495,9 +520,20 @@ struct HistoryView: View {
         .onChange(of: selectedDays) { _ in
             updateCachedTopApps()
         }
+        .onChange(of: filter) { _ in
+            updateCachedTopApps()
+        }
         .onReceive(dataStore.$syncData) { _ in
             updateCachedTopApps()
         }
+    }
+
+    /// Typing / speaking WPM for the selected period (5 characters = 1 word).
+    private var speedSummary: String {
+        let wpm = dataStore.syncData.wpm(forDays: selectedDays, from: Date())
+        let typing = wpm.typing.map { "Typing \(Int($0.rounded())) WPM" } ?? "Typing – WPM"
+        let speaking = wpm.speaking.map { "Speaking \(Int($0.rounded())) WPM" } ?? "Speaking – WPM"
+        return "\(typing) · \(speaking)"
     }
 
     private func formatNumber(_ count: Int) -> String {
@@ -611,8 +647,8 @@ class HistoryWindowController: NSWindowController, NSWindowDelegate {
     private var dataStore: HistoryDataStore?
     private var refreshTimer: Timer?
     
-    convenience init(syncData: SyncData, dataFileURL: URL?) {
-        let store = HistoryDataStore(syncData: syncData, dataFileURL: dataFileURL)
+    convenience init(syncData: SyncData, dataFileURL: URL?, liveData: (() -> SyncData)? = nil) {
+        let store = HistoryDataStore(syncData: syncData, dataFileURL: dataFileURL, liveData: liveData)
         let hostingController = NSHostingController(rootView: HistoryView(dataStore: store))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Typing Stats History"

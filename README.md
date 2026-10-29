@@ -12,6 +12,8 @@ brew install --cask rauchg/typing-stats/typing-stats
 ## Features
 
 - Live keystroke counter in menu bar
+- Counts dictated text from dictation apps (Aqua Voice, Willow, …), labeled so History can filter All / Typed / Dictated
+- Typing and speaking WPM
 - Daily, weekly, and monthly statistics
 - Multi-device sync via iCloud
 - History view with charts
