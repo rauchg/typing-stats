@@ -6,6 +6,7 @@
 - **Build:**
   - `./build.sh` - dev build (yellow keyboard icon, "-dev" version suffix)
   - `./build.sh --release` - production build
+- **Test auto-update:** `./test-update.sh` builds a release-named copy labeled one version below the latest tag and launches it with an overdue update check. It should silently download the latest release and show "Restart to Update (vX)" in the menu. Quit the installed app first. A dev build can't be used: Sparkle looks for an app with the host's name ("Typing Stats (Dev).app") in the update zip and rejects it.
 - **Build, deploy, and restart:**
   ```
   ./build.sh && cp -r "Typing Stats.app" /Applications/ && killall "Typing Stats" 2>/dev/null; open "/Applications/Typing Stats.app"
@@ -41,3 +42,4 @@
 - Count text inserted by dictation apps (Aqua Voice, Willow, Wispr Flow, …). They paste via the clipboard plus a synthetic Cmd+V: detect it in the event tap (source PID ≠ 0, owning app on the allowlist in `DictationSources`), count the clipboard text's characters, and never store the text. Dictated characters are included in the total and also labeled (`dictatedCount`, `dictatedAppCounts`) so the History view can filter All / Typed / Dictated. Other synthetic keys from dictation apps are ignored.
 - Show typing and speaking WPM (5 chars = 1 word). Typing time = gaps ≤ 2s between hardware keystrokes. Speaking time = how long the dictation app's process held the mic open (CoreAudio per-process input, macOS 14.2+), paired with the paste that follows. Utterances that can't be timed still count as dictated but are excluded from speaking WPM.
 - Apple's built-in Dictation inserts text without key events or the clipboard, so it isn't counted.
+- Updates: Sparkle downloads silently. Once an update is staged, the menu shows "Restart to Update (vX)", and clicking it installs and relaunches immediately with no Sparkle dialog (`willInstallUpdateOnQuit` + `immediateInstallationBlock`). Ignored updates install on the next quit.

@@ -705,7 +705,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         theMenu.addItem(NSMenuItem.separator())
 
-        if let version = updateChecker.availableVersion {
+        if let version = updateChecker.availableVersion, updateChecker.isReadyToInstall {
+            // Already downloaded: one click installs and relaunches, no Sparkle dialog.
+            theMenu.addItem(NSMenuItem(
+                title: "Restart to Update (v\(version))",
+                action: #selector(installUpdateNow),
+                keyEquivalent: ""
+            ))
+        } else if let version = updateChecker.availableVersion {
             theMenu.addItem(NSMenuItem(
                 title: "Install Update (v\(version))...",
                 action: #selector(checkForUpdates),
@@ -902,6 +909,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         aboutWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func installUpdateNow() {
+        // Persist today's counts before Sparkle terminates and relaunches the app.
+        saveLocalCount()
+        updateChecker.installUpdate()
     }
 
     @objc private func checkForUpdates() {
