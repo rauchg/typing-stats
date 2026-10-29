@@ -13,6 +13,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var unsavedCount = 0
     private var unsyncedCount = 0
     private let micTracker = MicSessionTracker()
+    private let agentCollector = AgentStatsCollector()
+    /// This device's coding agent stats. Also kept locally so recorded days survive an older app
+    /// version rewriting the sync file without them, or an agent deleting its old logs.
+    private var localAgentDays = AgentDays()
+    private var lastAgentScan: (time: Date, duration: TimeInterval)?
     /// Gaps between keystrokes longer than this end a typing burst (not counted as typing time).
     private let typingIdleThreshold: TimeInterval = 2.0
     fileprivate var eventTap: CFMachPort?
@@ -58,6 +63,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private let localDefaultsKey = "localKeystrokeData"
+    private let localAgentDefaultsKey = "localAgentStats"
+    /// Also read by HistoryView via @AppStorage.
+    static let showAgentStatsKey = "showAgentStats"
+    /// When off, agent logs aren't read and agent stats are hidden. Days already synced are kept.
+    private var showAgentStats: Bool {
+        get { UserDefaults.standard.object(forKey: Self.showAgentStatsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.showAgentStatsKey) }
+    }
     private let syncQueue = DispatchQueue(label: "com.typing-stats.sync", qos: .utility)
     private let fileCoordinator = NSFileCoordinator()
 
@@ -68,6 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installMainMenu()
 
         loadLocalCount()
+        loadLocalAgentDays()
         loadAndReconcileCounts()
 
         hasAccessibilityPermission = AXIsProcessTrusted()
@@ -83,6 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         micTracker.start()
         startSyncTimer()
+        refreshAgentStats()
         startFileMonitor()
         _ = updateChecker // Initialize Sparkle
 
@@ -169,11 +184,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let finalAppCounts = localAppCounts
         let finalExtras = localExtras
+        // Last scan's agent stats; rescanning here would delay quitting.
+        let finalAgentDays = localAgentDays
         coordinatedSync(to: url) { existingData in
             var syncData = existingData
             if syncData.devices[self.deviceID] == nil {
                 syncData.devices[self.deviceID] = DeviceData()
             }
+            syncData.devices[self.deviceID]?.mergeAgentDays(finalAgentDays, sourceID: AgentStatsCollector.sourceID)
             let existing = syncData.devices[self.deviceID]?.dailyCounts[today]
             let existingCount = existing?.count ?? 0
             if finalCount > existingCount {
@@ -212,6 +230,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func loadLocalAgentDays() {
+        guard let data = UserDefaults.standard.data(forKey: localAgentDefaultsKey),
+              let days = try? JSONDecoder().decode(AgentDays.self, from: data) else { return }
+        localAgentDays = days
+    }
+
+    private func saveLocalAgentDays() {
+        if let data = try? JSONEncoder().encode(localAgentDays) {
+            UserDefaults.standard.set(data, forKey: localAgentDefaultsKey)
+        }
+    }
+
     // MARK: - Sync Storage
 
     private func loadAndReconcileCounts() {
@@ -246,6 +276,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let cloudExtras = updated.devices[self.deviceID]?.extras(for: today) ?? DayExtras()
                 self.localExtras = self.localExtras.merged(with: cloudExtras)
             }
+
+            // Agent days are rebuilt from logs; take whichever copy has more (see AgentDayStats.merged).
+            self.localAgentDays = mergingAgentDays(self.localAgentDays, updated.devices[self.deviceID]?.agentDays ?? [:])
+            updated.devices[self.deviceID]?.mergeAgentDays(self.localAgentDays, sourceID: AgentStatsCollector.sourceID)
 
             updated.pruneAllDevices(keepingDays: 60)
             self.cachedSyncData = updated
@@ -318,6 +352,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let currentLocalCount = localKeystrokeCount
         let currentAppCounts = localAppCounts
         let currentExtras = localExtras
+        let currentAgentDays = localAgentDays
         unsyncedCount = 0
 
         syncQueue.async { [weak self] in
@@ -338,6 +373,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 } else if currentLocalCount == existingCount, let existing = existing {
                     syncData.devices[self.deviceID]?.dailyCounts[today]?.extras = existing.extras.merged(with: currentExtras)
                 }
+                syncData.devices[self.deviceID]?.mergeAgentDays(currentAgentDays, sourceID: AgentStatsCollector.sourceID)
 
                 return syncData
             }
@@ -351,6 +387,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.cachedSyncData.devices[self.deviceID] = DeviceData()
                 }
                 self.cachedSyncData.devices[self.deviceID]?.setCount(self.localKeystrokeCount, for: today, appCounts: self.localAppCounts.isEmpty ? nil : self.localAppCounts, extras: self.localExtras)
+                self.cachedSyncData.devices[self.deviceID]?.mergeAgentDays(self.localAgentDays, sourceID: AgentStatsCollector.sourceID)
                 self.lastSyncTime = Date()
 
                 let reconciledTotal = self.cachedSyncData.totalCount(for: today)
@@ -425,6 +462,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.cachedSyncData.devices[self.deviceID] = DeviceData()
                 }
                 self.cachedSyncData.devices[self.deviceID]?.setCount(self.localKeystrokeCount, for: today, appCounts: self.localAppCounts.isEmpty ? nil : self.localAppCounts, extras: self.localExtras)
+                self.cachedSyncData.devices[self.deviceID]?.mergeAgentDays(self.localAgentDays, sourceID: AgentStatsCollector.sourceID)
 
                 let reconciledTotal = self.cachedSyncData.totalCount(for: today)
                 if reconciledTotal != self.totalKeystrokeCount {
@@ -439,7 +477,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func startSyncTimer() {
         syncTimer = Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { [weak self] _ in
-            self?.syncToCloud()
+            self?.refreshAgentStats()
         }
     }
 
@@ -456,6 +494,122 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.updateMenuBarTitle()
             }
         }
+    }
+
+    // MARK: - Coding Agents
+
+    /// Rebuilds this device's agent stats from local logs in the background, then syncs.
+    private func refreshAgentStats() {
+        guard showAgentStats else {
+            syncToCloud()
+            return
+        }
+        let started = Date()
+        agentCollector.collect { [weak self] days in
+            guard let self = self else { return }
+            self.lastAgentScan = (Date(), Date().timeIntervalSince(started))
+
+            let cutoff = Calendar.current.date(byAdding: .day, value: -AgentStatsCollector.keepingDays, to: Date())!
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let cutoffString = formatter.string(from: cutoff)
+            self.localAgentDays = mergingAgentDays(self.localAgentDays, days).filter { $0.key >= cutoffString }
+            self.saveLocalAgentDays()
+
+            if self.cachedSyncData.devices[self.deviceID] == nil {
+                self.cachedSyncData.devices[self.deviceID] = DeviceData()
+            }
+            self.cachedSyncData.devices[self.deviceID]?.mergeAgentDays(self.localAgentDays, sourceID: AgentStatsCollector.sourceID)
+            self.syncToCloud()
+        }
+    }
+
+    /// "Agents" menu section: what coding agents did today, from their local logs on every device.
+    private func addAgentsSection() {
+        guard showAgentStats else { return }
+        let perAgent = cachedSyncData.agentStats(for: todayString()).filter { $0.value.hasActivity }
+        let stats = perAgent.values.reduce(AgentDayStats()) { $0.adding($1) }
+        let avg7 = cachedSyncData.averageAgentChars(forLastDays: 7, from: Date())
+        guard stats.hasActivity || avg7 > 0 else { return }
+
+        func addInfo(_ title: String, to menu: NSMenu) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+
+        theMenu.addItem(NSMenuItem.separator())
+
+        let todayItem = NSMenuItem(title: "Agents today: \(formatCountFull(stats.charsWritten)) chars written", action: nil, keyEquivalent: "")
+        if perAgent.isEmpty {
+            todayItem.isEnabled = false
+        } else {
+            let breakdown = NSMenu()
+            // Rows stay enabled (with no action) because disabled items draw their icons dimmed.
+            breakdown.autoenablesItems = false
+            for (agent, s) in perAgent.sorted(by: { $0.value.totalTokens > $1.value.totalTokens }) {
+                var parts = ["\(formatCountFull(s.charsWritten)) chars", "\(formatCount(s.totalTokens)) tokens",
+                             "\(s.prompts) prompt\(s.prompts == 1 ? "" : "s")"]
+                if s.activeSeconds >= 60 { parts.append(formatDuration(s.activeSeconds)) }
+                if s.costUSD > 0 { parts.append(String(format: "$%.2f", s.costUSD)) }
+                let item = NSMenuItem(title: "\(AgentKind.displayName(for: agent)): " + parts.joined(separator: " · "), action: nil, keyEquivalent: "")
+                item.image = agentIcon(for: agent)
+                breakdown.addItem(item)
+            }
+            todayItem.submenu = breakdown
+        }
+        theMenu.addItem(todayItem)
+
+        var detail: [String] = []
+        if let leverage = stats.leverage {
+            detail.append("Leverage " + (leverage >= 10 ? String(format: "%.0f×", leverage) : String(format: "%.1f×", leverage)))
+        }
+        if stats.linesAdded + stats.linesRemoved > 0 {
+            detail.append("+\(formatCountFull(stats.linesAdded)) −\(formatCountFull(stats.linesRemoved)) lines")
+        }
+        if stats.activeSeconds >= 60 { detail.append("\(formatDuration(stats.activeSeconds)) active") }
+        if !detail.isEmpty { addInfo("    " + detail.joined(separator: " · "), to: theMenu) }
+
+        if stats.totalTokens > 0 {
+            var tokens = "    Tokens \(formatCount(stats.totalInputTokens)) in"
+            if stats.cacheReadTokens > 0 {
+                tokens += " (\(Int((Double(stats.cacheReadTokens) / Double(stats.totalInputTokens) * 100).rounded()))% cached)"
+            }
+            addInfo(tokens + " · \(formatCount(stats.outputTokens)) out", to: theMenu)
+        }
+
+        addInfo("Agents 7-day avg: \(formatCountFull(Int(avg7))) chars", to: theMenu)
+    }
+
+    private var agentIconCache: [String: NSImage] = [:]
+
+    /// The agent's desktop app icon when it's installed, otherwise a symbol (fx is CLI-only).
+    private func agentIcon(for agent: String) -> NSImage? {
+        if let cached = agentIconCache[agent] { return cached }
+        let bundleIDs: [String]
+        var symbol = "terminal"
+        switch AgentKind(rawValue: agent) {
+        case .claudeCode: bundleIDs = ["com.anthropic.claudefordesktop"]
+        case .codex: bundleIDs = ["com.openai.codex"]
+        case .opencode: bundleIDs = ["ai.opencode.desktop"]
+        case .fx: bundleIDs = []; symbol = "function"
+        case nil: bundleIDs = []
+        }
+        let appIcon = bundleIDs.lazy
+            .compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+            .first
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        guard let image = (appIcon ?? NSImage(systemSymbolName: symbol, accessibilityDescription: nil))?.copy() as? NSImage else {
+            return nil
+        }
+        image.size = NSSize(width: 16, height: 16)
+        agentIconCache[agent] = image
+        return image
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let minutes = Int(seconds / 60)
+        return minutes >= 60 ? String(format: "%dh %02dm", minutes / 60, minutes % 60) : "\(minutes)m"
     }
 
     // MARK: - Helpers
@@ -684,6 +838,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             theMenu.addItem(recordItem)
         }
 
+        addAgentsSection()
+
         theMenu.addItem(NSMenuItem.separator())
 
         theMenu.addItem(NSMenuItem(
@@ -702,6 +858,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         loginItem.state = launchAtLogin ? .on : .off
         theMenu.addItem(loginItem)
+
+        let agentStatsItem = NSMenuItem(
+            title: "Show Agent Stats",
+            action: #selector(toggleAgentStats),
+            keyEquivalent: ""
+        )
+        agentStatsItem.state = showAgentStats ? .on : .off
+        theMenu.addItem(agentStatsItem)
 
         theMenu.addItem(NSMenuItem.separator())
 
@@ -758,6 +922,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let syncItem = NSMenuItem(title: "Last sync: \(lastSyncString)", action: nil, keyEquivalent: "")
             syncItem.isEnabled = false
             theMenu.addItem(syncItem)
+
+            let agentScanString = lastAgentScan.map { scan -> String in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm:ss"
+                return "\(formatter.string(from: scan.time)) (\(String(format: "%.2fs", scan.duration)))"
+            } ?? "Never"
+            let agentScanItem = NSMenuItem(title: "Agent logs scanned: \(agentScanString)", action: nil, keyEquivalent: "")
+            agentScanItem.isEnabled = false
+            theMenu.addItem(agentScanItem)
 
             let deviceItem = NSMenuItem(title: "Device: \(String(deviceID.prefix(8)))...", action: nil, keyEquivalent: "")
             deviceItem.isEnabled = false
@@ -885,6 +1058,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
+    }
+
+    @objc private func toggleAgentStats() {
+        showAgentStats.toggle()
+        if showAgentStats { refreshAgentStats() }
     }
 
     @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {

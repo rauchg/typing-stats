@@ -286,6 +286,7 @@ struct HistoryView: View {
     @ObservedObject var dataStore: HistoryDataStore
     @State private var selectedDays = 7
     @State private var filter: CountFilter = .all
+    @AppStorage(AppDelegate.showAgentStatsKey) private var showAgentStats = true
     @State private var hiddenApps: Set<String> = []  // bundleIDs to hide from stats
     @State private var expandedDays: Set<String> = []  // dateStrings of expanded rows
     @State private var cachedTopApps: [(bundleID: String, count: Int, color: Color)] = []
@@ -334,6 +335,11 @@ struct HistoryView: View {
         cachedTopApps = computeTopAppsForPeriod()
     }
 
+    /// Breakdown keys are bundle IDs, or project folder names in Agents mode.
+    private func displayName(for key: String) -> String {
+        filter == .agents && key != "others" ? key : getAppDisplayName(for: key)
+    }
+
     private var dailyData: [DailyDataWithApps] {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -358,7 +364,7 @@ struct HistoryView: View {
                     if !hiddenApps.contains(bundleID) {
                         breakdown.append(AppBreakdown(
                             bundleID: bundleID,
-                            displayName: getAppDisplayName(for: bundleID),
+                            displayName: displayName(for: bundleID),
                             count: count,
                             color: AppColorManager.color(for: index)
                         ))
@@ -425,7 +431,7 @@ struct HistoryView: View {
             // Chart section
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Keystroke History")
+                    Text(filter == .agents ? "Agent Output" : "Keystroke History")
                         .font(.headline)
                     Spacer()
                     Picker("", selection: $selectedDays) {
@@ -439,18 +445,19 @@ struct HistoryView: View {
 
                 HStack {
                     Picker("", selection: $filter) {
-                        ForEach(CountFilter.allCases, id: \.self) { f in
+                        ForEach(CountFilter.allCases.filter { $0 != .agents || showAgentStats }, id: \.self) { f in
                             Text(f.rawValue).tag(f)
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 220)
-                    .help("Dictated = text inserted by dictation apps (Aqua Voice, Willow, …), counted in characters")
+                    .frame(width: showAgentStats ? 290 : 220)
+                    .help("Dictated = text inserted by dictation apps (Aqua Voice, Willow, …), counted in characters. Agents = characters coding agents (Claude Code, Codex, opencode, fx) wrote into files, by project")
                     Spacer()
-                    Text(speedSummary)
+                    Text(filter == .agents ? agentSummary : speedSummary)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .monospacedDigit()
+                        .lineLimit(1)
                 }
                 
                 // Stacked bar chart (isolated to prevent flicker on row expand)
@@ -461,9 +468,10 @@ struct HistoryView: View {
                     ForEach(cachedTopApps, id: \.bundleID) { app in
                         LegendItem(
                             bundleID: app.bundleID,
-                            displayName: getAppDisplayName(for: app.bundleID),
+                            displayName: displayName(for: app.bundleID),
                             color: app.color,
                             count: app.count,
+                            unit: filter == .agents ? "chars" : "keystrokes",
                             isHidden: hiddenApps.contains(app.bundleID)
                         ) {
                             if hiddenApps.contains(app.bundleID) {
@@ -520,7 +528,14 @@ struct HistoryView: View {
         .onChange(of: selectedDays) { _ in
             updateCachedTopApps()
         }
-        .onChange(of: filter) { _ in
+        .onChange(of: showAgentStats) { show in
+            if !show && filter == .agents { filter = .all }
+        }
+        .onChange(of: filter) { [filter] newFilter in
+            // Agents mode is keyed by project, not app; don't carry hidden apps across.
+            if (filter == .agents) != (newFilter == .agents) {
+                hiddenApps = []
+            }
             updateCachedTopApps()
         }
         .onReceive(dataStore.$syncData) { _ in
@@ -534,6 +549,23 @@ struct HistoryView: View {
         let typing = wpm.typing.map { "Typing \(Int($0.rounded())) WPM" } ?? "Typing – WPM"
         let speaking = wpm.speaking.map { "Speaking \(Int($0.rounded())) WPM" } ?? "Speaking – WPM"
         return "\(typing) · \(speaking)"
+    }
+
+    /// Agent tokens and leverage for the selected period.
+    private var agentSummary: String {
+        let stats = dataStore.syncData.totalAgentStats(forDays: selectedDays, from: Date())
+        var parts = ["Tokens \(formatCompact(stats.totalInputTokens)) in · \(formatCompact(stats.outputTokens)) out"]
+        if let leverage = stats.leverage {
+            parts.append("Leverage " + (leverage >= 10 ? String(format: "%.0f×", leverage) : String(format: "%.1f×", leverage)))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formatCompact(_ count: Int) -> String {
+        if count >= 1_000_000_000 { return String(format: "%.2fB", Double(count) / 1_000_000_000) }
+        if count >= 1_000_000 { return String(format: "%.2fM", Double(count) / 1_000_000) }
+        if count >= 1000 { return String(format: "%.2fk", Double(count) / 1000) }
+        return "\(count)"
     }
 
     private func formatNumber(_ count: Int) -> String {
@@ -550,6 +582,7 @@ struct LegendItem: View {
     let displayName: String
     let color: Color
     let count: Int
+    let unit: String
     let isHidden: Bool
     let onToggle: () -> Void
 
@@ -570,7 +603,7 @@ struct LegendItem: View {
             }
         }
         .buttonStyle(.plain)
-        .help("\(displayName): \(formatCount(count)) keystrokes")
+        .help("\(displayName): \(formatCount(count)) \(unit)")
     }
 
     private func formatCount(_ count: Int) -> String {
