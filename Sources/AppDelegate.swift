@@ -505,7 +505,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return formatter.string(from: NSNumber(value: count)) ?? "\(count)"
     }
 
-    private func getStats() -> (today: Int, yesterday: Int, avg7: Double, avg30: Double, recordCount: Int, recordDate: String?) {
+    private func getStats() -> (today: Int, yesterday: Int, avg7: Double, avg30: Double, recordCount: Int, recordDate: String?, currentStreak: Int, longestStreak: (count: Int, endDate: String)?) {
         let today = todayString()
         let yesterday = yesterdayString()
 
@@ -514,8 +514,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let avg7 = cachedSyncData.averageCount(forLastDays: 7, from: Date())
         let avg30 = cachedSyncData.averageCount(forLastDays: 30, from: Date())
         let record = cachedSyncData.recordDay()
+        let currentStreak = cachedSyncData.currentStreak()
+        let longestStreak = cachedSyncData.longestStreak()
 
-        return (todayCount, yesterdayCount, avg7, avg30, record?.count ?? 0, record?.date)
+        return (todayCount, yesterdayCount, avg7, avg30, record?.count ?? 0, record?.date, currentStreak, longestStreak)
     }
 
     private func formatDateShort(_ dateString: String) -> String {
@@ -682,6 +684,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let recordItem = NSMenuItem(title: "Record: \(formatCountFull(stats.recordCount)) (\(formatDateShort(recordDate)))", action: nil, keyEquivalent: "")
             recordItem.isEnabled = false
             theMenu.addItem(recordItem)
+        }
+
+        if stats.currentStreak > 0 {
+            let currentItem = NSMenuItem(title: "Current streak: \(stats.currentStreak) day\(stats.currentStreak == 1 ? "" : "s")", action: nil, keyEquivalent: "")
+            currentItem.isEnabled = false
+            theMenu.addItem(currentItem)
+        }
+
+        if let longestStreak = stats.longestStreak, longestStreak.count > stats.currentStreak {
+            let longestItem = NSMenuItem(title: "Longest streak: \(longestStreak.count) days (ended \(formatDateShort(longestStreak.endDate)))", action: nil, keyEquivalent: "")
+            longestItem.isEnabled = false
+            theMenu.addItem(longestItem)
         }
 
         theMenu.addItem(NSMenuItem.separator())
