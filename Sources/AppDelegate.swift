@@ -182,6 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // Typing time can grow without the count changing (e.g. after a pause); keep the max.
                 syncData.devices[self.deviceID]?.dailyCounts[today]?.extras = existing.extras.merged(with: finalExtras)
             }
+            syncData.pruneAllDevices(keepingDays: 365)
             return syncData
         }
     }
@@ -247,7 +248,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.localExtras = self.localExtras.merged(with: cloudExtras)
             }
 
-            updated.pruneAllDevices(keepingDays: 60)
+            updated.pruneAllDevices(keepingDays: 365)
             self.cachedSyncData = updated
             self.totalKeystrokeCount = updated.totalCount(for: today)
             self.saveLocalCount()
