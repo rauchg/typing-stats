@@ -26,9 +26,16 @@
 	<true/>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<!-- Serve appcast.xml from GitHub Releases rather than raw.githubusercontent.com/.../main/appcast.xml:
+	     1. Decouples update distribution from pushes to main (CI no longer needs direct write access to main to publish updates).
+	     2. Pairs appcast.xml atomically with the signed release zip under the immutable v* release tag and gated Release environment. -->
 	<key>SUFeedURL</key>
 	<string>https://github.com/rauchg/typing-stats/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>j2WSnNd1bs0Z4yLvYRzn+ILi2lItdWO4b31BZuJxhko=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

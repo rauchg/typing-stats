@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
     <title>Typing Stats</title>
     <item>
@@ -7,10 +8,10 @@
       <sparkle:version>0.0.30</sparkle:version>
       <sparkle:shortVersionString>0.0.30</sparkle:shortVersionString>
       <pubDate>Mon, 02 Nov 2026 05:08:34 +0000</pubDate>
-      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.30/TypingStats.zip"
-                 type="application/octet-stream"
-                 length="2642429"
-                 sparkle:edSignature="E9XdYsuCUdBk5g/iruA2EdVw/m4v0w5xQ1CZ3d0gcRBylst108h8CsPpzVP7a8HOajGyjwrB7fET53ZId27MDw=="/>
+      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.30/TypingStats.zip" type="application/octet-stream" length="2642429" sparkle:edSignature="E9XdYsuCUdBk5g/iruA2EdVw/m4v0w5xQ1CZ3d0gcRBylst108h8CsPpzVP7a8HOajGyjwrB7fET53ZId27MDw=="></enclosure>
     </item>
   </channel>
-</rss>
+</rss><!-- sparkle-signatures:
+edSignature: uDDj+ixiro4nyv3dchg38FVN5qOmOe6HhrmA6Q4xPYOgxcEOmSCsLGbWVrJjLKxiaUgQorIZJ2YcFUmsV/rUCg==
+length: 953
+-->
