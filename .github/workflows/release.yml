@@ -100,11 +100,12 @@ jobs:
           sed -i '' "s/version \".*\"/version \"$VERSION\"/" Casks/typing-stats.rb
           sed -i '' "s/sha256 \".*\"/sha256 \"$SHA\"/" Casks/typing-stats.rb
 
-      - name: Update appcast.xml
+      - name: Update and sign appcast.xml
         env:
           VERSION: ${{ steps.version.outputs.version }}
           SIGNATURE: ${{ steps.sign.outputs.signature }}
           LENGTH: ${{ steps.sign.outputs.length }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
           cat > appcast.xml << EOF
@@ -125,6 +126,8 @@ jobs:
             </channel>
           </rss>
           EOF
+          echo "$SPARKLE_PRIVATE_KEY" | /tmp/bin/sign_update appcast.xml --ed-key-file -
+          echo "$SPARKLE_PRIVATE_KEY" | /tmp/bin/sign_update --verify appcast.xml --ed-key-file -
 
       - name: Create Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
@@ -147,7 +150,7 @@ jobs:
             -f ref="refs/heads/${BRANCH}" -f sha="$HEAD_OID" 2>/dev/null || \
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" \
             -f sha="$HEAD_OID" -F force=true
-          jq -n \
+          RESPONSE=$(jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg branch "$BRANCH" \
             --arg oid "$HEAD_OID" \
@@ -169,4 +172,8 @@ jobs:
                   }
                 }
               }
-            }' | gh api graphql --input -
+            }' | gh api graphql --input -)
+          echo "$RESPONSE" | jq -e '.data.createCommitOnBranch.commit.signature.isValid == true' > /dev/null || {
+            echo "Automated commit signature verification failed: $RESPONSE" >&2
+            exit 1
+          }
