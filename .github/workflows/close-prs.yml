@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   close:
-    if: github.event.pull_request.user.login != 'rauchg' && github.event.pull_request.user.login != 'dependabot[bot]'
+    if: github.event.pull_request.user.login != 'rauchg' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Close external pull request

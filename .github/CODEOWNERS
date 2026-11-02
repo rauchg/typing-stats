@@ -1,0 +1,8 @@
+* @rauchg
+/.github/** @rauchg
+/build.sh @rauchg
+/Package.swift @rauchg
+/Package.resolved @rauchg
+/Info.plist @rauchg
+/appcast.xml @rauchg
+/Casks/** @rauchg
