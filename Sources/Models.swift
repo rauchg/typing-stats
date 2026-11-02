@@ -10,6 +10,41 @@ enum CountFilter: String, CaseIterable {
     case dictated = "Dictated"
 }
 
+// MARK: - Sync Limits & Safe Arithmetic
+
+enum SyncLimits {
+    /// Maximum keystrokes/characters accepted per device per day when decoding or accumulating.
+    /// High enough to never clip real usage (10M/day), low enough to prevent Int overflow across devices.
+    static let maxDailyCount: Int = 10_000_000
+    /// Seconds in a calendar day (24h), used to clamp per-day typing/speaking durations.
+    static let maxDailySeconds: Double = 86_400
+    /// Upper bound on computed WPM so corrupted/hand-edited sync files cannot produce unrepresentable Doubles.
+    static let maxWPM: Double = 10_000
+
+    static func clampCount(_ value: Int?) -> Int {
+        guard let value = value, value > 0 else { return 0 }
+        return min(value, maxDailyCount)
+    }
+
+    static func clampSeconds(_ value: Double?) -> Double {
+        guard let value = value, value.isFinite, value > 0 else { return 0 }
+        return min(value, maxDailySeconds)
+    }
+
+    static func sanitizeAppCounts(_ counts: [String: Int]?) -> [String: Int] {
+        guard let counts = counts else { return [:] }
+        var sanitized: [String: Int] = [:]
+        sanitized.reserveCapacity(counts.count)
+        for (bundleID, raw) in counts {
+            let clamped = clampCount(raw)
+            if clamped > 0 {
+                sanitized[bundleID] = clamped
+            }
+        }
+        return sanitized
+    }
+}
+
 // MARK: - Day Extras
 
 /// Per-day dictation and speed metrics, stored next to the keystroke count.
@@ -30,22 +65,30 @@ struct DayExtras: Codable, Equatable {
 
     init(dictatedCount: Int = 0, dictatedAppCounts: [String: Int] = [:], typingSeconds: Double = 0,
          typingKeys: Int = 0, speakingSeconds: Double = 0, speakingChars: Int = 0) {
-        self.dictatedCount = dictatedCount
-        self.dictatedAppCounts = dictatedAppCounts
-        self.typingSeconds = typingSeconds
-        self.typingKeys = typingKeys
-        self.speakingSeconds = speakingSeconds
-        self.speakingChars = speakingChars
+        self.dictatedCount = SyncLimits.clampCount(dictatedCount)
+        self.dictatedAppCounts = SyncLimits.sanitizeAppCounts(dictatedAppCounts)
+        self.typingSeconds = SyncLimits.clampSeconds(typingSeconds)
+        self.typingKeys = SyncLimits.clampCount(typingKeys)
+        self.speakingSeconds = SyncLimits.clampSeconds(speakingSeconds)
+        self.speakingChars = SyncLimits.clampCount(speakingChars)
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        dictatedCount = try c.decodeIfPresent(Int.self, forKey: .dictatedCount) ?? 0
-        dictatedAppCounts = try c.decodeIfPresent([String: Int].self, forKey: .dictatedAppCounts) ?? [:]
-        typingSeconds = try c.decodeIfPresent(Double.self, forKey: .typingSeconds) ?? 0
-        typingKeys = try c.decodeIfPresent(Int.self, forKey: .typingKeys) ?? 0
-        speakingSeconds = try c.decodeIfPresent(Double.self, forKey: .speakingSeconds) ?? 0
-        speakingChars = try c.decodeIfPresent(Int.self, forKey: .speakingChars) ?? 0
+        let rawDictatedCount = try c.decodeIfPresent(Int.self, forKey: .dictatedCount)
+        let rawDictatedAppCounts = try c.decodeIfPresent([String: Int].self, forKey: .dictatedAppCounts)
+        let rawTypingSeconds = try c.decodeIfPresent(Double.self, forKey: .typingSeconds)
+        let rawTypingKeys = try c.decodeIfPresent(Int.self, forKey: .typingKeys)
+        let rawSpeakingSeconds = try c.decodeIfPresent(Double.self, forKey: .speakingSeconds)
+        let rawSpeakingChars = try c.decodeIfPresent(Int.self, forKey: .speakingChars)
+        self.init(
+            dictatedCount: rawDictatedCount ?? 0,
+            dictatedAppCounts: rawDictatedAppCounts ?? [:],
+            typingSeconds: rawTypingSeconds ?? 0,
+            typingKeys: rawTypingKeys ?? 0,
+            speakingSeconds: rawSpeakingSeconds ?? 0,
+            speakingChars: rawSpeakingChars ?? 0
+        )
     }
 
     var isEmpty: Bool { self == DayExtras() }
@@ -83,9 +126,9 @@ extension DayExtras {
         for (bundleID, count) in o.dictatedAppCounts {
             r.dictatedAppCounts[bundleID] = (r.dictatedAppCounts[bundleID] ?? 0).saturatingAdd(count)
         }
-        r.typingSeconds += o.typingSeconds
+        r.typingSeconds += SyncLimits.clampSeconds(o.typingSeconds)
         r.typingKeys = typingKeys.saturatingAdd(o.typingKeys)
-        r.speakingSeconds += o.speakingSeconds
+        r.speakingSeconds += SyncLimits.clampSeconds(o.speakingSeconds)
         r.speakingChars = speakingChars.saturatingAdd(o.speakingChars)
         return r
     }
@@ -93,8 +136,10 @@ extension DayExtras {
 
 /// Words per minute using the standard 5-characters-per-word convention.
 func wordsPerMinute(chars: Int, seconds: Double) -> Double? {
-    guard seconds >= 1, chars > 0 else { return nil }
-    return (Double(chars) / 5.0) / (seconds / 60.0)
+    guard seconds.isFinite, seconds >= 1, chars > 0 else { return nil }
+    let wpm = (Double(chars) / 5.0) / (seconds / 60.0)
+    guard wpm.isFinite, wpm > 0, wpm <= SyncLimits.maxWPM else { return nil }
+    return wpm
 }
 
 // MARK: - Sync Data Models
@@ -112,34 +157,63 @@ struct DailyCount: Codable {
     var speakingChars: Int?
 
     init(count: Int, appCounts: [String: Int]? = nil, extras: DayExtras = DayExtras()) {
-        self.count = count
+        self.count = SyncLimits.clampCount(count)
         self.lastModified = Date().timeIntervalSince1970
-        self.appCounts = appCounts
+        let sanitizedApps = SyncLimits.sanitizeAppCounts(appCounts)
+        self.appCounts = sanitizedApps.isEmpty ? nil : sanitizedApps
         self.extras = extras
     }
 
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawCount = try c.decode(Int.self, forKey: .count)
+        self.count = SyncLimits.clampCount(rawCount)
+
+        let rawModified = try c.decodeIfPresent(TimeInterval.self, forKey: .lastModified) ?? 0
+        self.lastModified = (rawModified.isFinite && rawModified >= 0) ? rawModified : 0
+
+        let sanitizedApps = SyncLimits.sanitizeAppCounts(try c.decodeIfPresent([String: Int].self, forKey: .appCounts))
+        self.appCounts = sanitizedApps.isEmpty ? nil : sanitizedApps
+
+        let decodedExtras = DayExtras(
+            dictatedCount: try c.decodeIfPresent(Int.self, forKey: .dictatedCount) ?? 0,
+            dictatedAppCounts: try c.decodeIfPresent([String: Int].self, forKey: .dictatedAppCounts) ?? [:],
+            typingSeconds: try c.decodeIfPresent(Double.self, forKey: .typingSeconds) ?? 0,
+            typingKeys: try c.decodeIfPresent(Int.self, forKey: .typingKeys) ?? 0,
+            speakingSeconds: try c.decodeIfPresent(Double.self, forKey: .speakingSeconds) ?? 0,
+            speakingChars: try c.decodeIfPresent(Int.self, forKey: .speakingChars) ?? 0
+        )
+        self.extras = decodedExtras
+    }
+
     /// Sanitized view of the dictation/speed fields. The sync file is shared via iCloud and can be
-    /// edited by other devices or by hand, so negative and non-finite values are clamped to 0.
+    /// edited by other devices or by hand, so negative, non-finite, and oversized values are clamped.
     var extras: DayExtras {
         get {
-            func n(_ v: Int?) -> Int { max(0, v ?? 0) }
-            func s(_ v: Double?) -> Double { guard let v = v, v.isFinite, v > 0 else { return 0 }; return v }
-            return DayExtras(
-                dictatedCount: n(dictatedCount),
-                dictatedAppCounts: (dictatedAppCounts ?? [:]).filter { $0.value > 0 },
-                typingSeconds: s(typingSeconds),
-                typingKeys: n(typingKeys),
-                speakingSeconds: s(speakingSeconds),
-                speakingChars: n(speakingChars)
+            DayExtras(
+                dictatedCount: dictatedCount ?? 0,
+                dictatedAppCounts: dictatedAppCounts ?? [:],
+                typingSeconds: typingSeconds ?? 0,
+                typingKeys: typingKeys ?? 0,
+                speakingSeconds: speakingSeconds ?? 0,
+                speakingChars: speakingChars ?? 0
             )
         }
         set {
-            dictatedCount = newValue.dictatedCount > 0 ? newValue.dictatedCount : nil
-            dictatedAppCounts = newValue.dictatedAppCounts.isEmpty ? nil : newValue.dictatedAppCounts
-            typingSeconds = newValue.typingSeconds > 0 ? newValue.typingSeconds : nil
-            typingKeys = newValue.typingKeys > 0 ? newValue.typingKeys : nil
-            speakingSeconds = newValue.speakingSeconds > 0 ? newValue.speakingSeconds : nil
-            speakingChars = newValue.speakingChars > 0 ? newValue.speakingChars : nil
+            let clamped = DayExtras(
+                dictatedCount: newValue.dictatedCount,
+                dictatedAppCounts: newValue.dictatedAppCounts,
+                typingSeconds: newValue.typingSeconds,
+                typingKeys: newValue.typingKeys,
+                speakingSeconds: newValue.speakingSeconds,
+                speakingChars: newValue.speakingChars
+            )
+            dictatedCount = clamped.dictatedCount > 0 ? clamped.dictatedCount : nil
+            dictatedAppCounts = clamped.dictatedAppCounts.isEmpty ? nil : clamped.dictatedAppCounts
+            typingSeconds = clamped.typingSeconds > 0 ? clamped.typingSeconds : nil
+            typingKeys = clamped.typingKeys > 0 ? clamped.typingKeys : nil
+            speakingSeconds = clamped.speakingSeconds > 0 ? clamped.speakingSeconds : nil
+            speakingChars = clamped.speakingChars > 0 ? clamped.speakingChars : nil
         }
     }
 }
@@ -188,7 +262,7 @@ struct SyncData: Codable {
     }
 
     func totalCount(for date: String) -> Int {
-        devices.values.reduce(0) { $0 + $1.count(for: date) }
+        devices.values.reduce(0) { $0.saturatingAdd($1.count(for: date)) }
     }
 
     /// Extras summed across devices for a date.
@@ -257,7 +331,7 @@ struct SyncData: Codable {
         var aggregated: [String: Int] = [:]
         for device in devices.values {
             for (bundleID, count) in device.appCounts(for: date) {
-                aggregated[bundleID, default: 0] += count
+                aggregated[bundleID] = (aggregated[bundleID] ?? 0).saturatingAdd(count)
             }
         }
         return aggregated
@@ -274,7 +348,7 @@ struct SyncData: Codable {
             guard let pastDate = calendar.date(byAdding: .day, value: -i, to: date) else { continue }
             let dateString = formatter.string(from: pastDate)
             for (bundleID, count) in totalAppCounts(for: dateString) {
-                aggregated[bundleID, default: 0] += count
+                aggregated[bundleID] = (aggregated[bundleID] ?? 0).saturatingAdd(count)
             }
         }
         return aggregated
@@ -314,7 +388,7 @@ struct SyncData: Codable {
             let dateString = formatter.string(from: pastDate)
             let count = totalCount(for: dateString)
             if count > 0 {
-                total += count
+                total = total.saturatingAdd(count)
                 daysWithData += 1
             }
         }
@@ -358,6 +432,17 @@ struct SyncData: Codable {
     }
 }
 
+extension Double {
+    /// Converts a rounded Double to Int without trapping on NaN, infinity, or out-of-range values.
+    var roundedClampedInt: Int {
+        guard isFinite else { return 0 }
+        let r = rounded()
+        if r <= Double(Int.min) { return .min }
+        if r >= Double(Int.max) { return .max }
+        return Int(r)
+    }
+}
+
 // MARK: - Local State
 
 struct LocalState: Codable {
@@ -365,4 +450,21 @@ struct LocalState: Codable {
     var count: Int
     var appCounts: [String: Int]?  // bundleID -> count (optional for backwards compatibility)
     var extras: DayExtras?         // dictation / speed metrics (optional for backwards compatibility)
+
+    init(date: String, count: Int, appCounts: [String: Int]? = nil, extras: DayExtras? = nil) {
+        self.date = date
+        self.count = SyncLimits.clampCount(count)
+        let sanitizedApps = SyncLimits.sanitizeAppCounts(appCounts)
+        self.appCounts = sanitizedApps.isEmpty ? nil : sanitizedApps
+        self.extras = extras
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let date = try c.decode(String.self, forKey: .date)
+        let rawCount = try c.decode(Int.self, forKey: .count)
+        let rawAppCounts = try c.decodeIfPresent([String: Int].self, forKey: .appCounts)
+        let rawExtras = try c.decodeIfPresent(DayExtras.self, forKey: .extras)
+        self.init(date: date, count: rawCount, appCounts: rawAppCounts, extras: rawExtras)
+    }
 }

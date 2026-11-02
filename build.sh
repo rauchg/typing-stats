@@ -22,8 +22,6 @@ done
 # Get version from latest git tag
 VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.1")
 echo "Version: $VERSION"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
 
 if [ "$RELEASE_BUILD" = true ]; then
     APP_NAME="Typing Stats"
@@ -45,6 +43,8 @@ mkdir -p "$BUNDLE_NAME/Contents/Frameworks"
 
 cp "$BUILD_DIR/release/TypingStats" "$BUNDLE_NAME/Contents/MacOS/"
 cp Info.plist "$BUNDLE_NAME/Contents/"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$BUNDLE_NAME/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$BUNDLE_NAME/Contents/Info.plist"
 if [ "$RELEASE_BUILD" != true ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.typing-stats.app.dev" "$BUNDLE_NAME/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Typing Stats (Dev)" "$BUNDLE_NAME/Contents/Info.plist"

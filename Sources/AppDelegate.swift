@@ -59,6 +59,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let localDefaultsKey = "localKeystrokeData"
     private let syncQueue = DispatchQueue(label: "com.typing-stats.sync", qos: .utility)
+    private let pasteboardQueue = DispatchQueue(label: "com.typing-stats.pasteboard", qos: .userInitiated)
+    private let pasteboardLock = NSLock()
+    private var pasteboardReadInFlight = false
+    /// Maximum time to wait for a dictation pasteboard read before dropping it.
+    private static let pasteboardReadTimeout: TimeInterval = 0.5
+    /// Maximum UTF-8 byte size (256 KB) and UTF-16 character count (100k) accepted for a single dictation paste.
+    private static let maxDictationPasteboardBytes = 256 * 1024
+    private static let maxDictationCharacters = 100_000
     private let fileCoordinator = NSFileCoordinator()
 
     // MARK: - App Lifecycle
@@ -642,7 +650,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let todayExtras = cachedSyncData.totalExtras(for: todayString())
         if todayExtras.dictatedCount > 0 {
-            let typed = max(0, stats.today - todayExtras.dictatedCount)
+            let typed = max(0, stats.today.saturatingSubtract(todayExtras.dictatedCount))
             let splitItem = NSMenuItem(
                 title: "    Typed \(formatCountFull(typed)) · Dictated \(formatCountFull(todayExtras.dictatedCount))",
                 action: nil, keyEquivalent: "")
@@ -652,8 +660,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let todayWPM = cachedSyncData.wpm(forDays: 1, from: Date())
         let weekWPM = cachedSyncData.wpm(forDays: 7, from: Date())
         func wpmPart(_ name: String, today: Double?, week: Double?) -> String? {
-            if let v = today { return "\(name) \(Int(v.rounded())) WPM" }
-            if let v = week { return "\(name) \(Int(v.rounded())) WPM (7d)" }
+            if let v = today { return "\(name) \(v.roundedClampedInt) WPM" }
+            if let v = week { return "\(name) \(v.roundedClampedInt) WPM (7d)" }
             return nil
         }
         let wpmParts = [
@@ -670,11 +678,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         yesterdayItem.isEnabled = false
         theMenu.addItem(yesterdayItem)
 
-        let avg7Item = NSMenuItem(title: "7-day avg: \(formatCountFull(Int(stats.avg7)))", action: nil, keyEquivalent: "")
+        let avg7Item = NSMenuItem(title: "7-day avg: \(formatCountFull(stats.avg7.roundedClampedInt))", action: nil, keyEquivalent: "")
         avg7Item.isEnabled = false
         theMenu.addItem(avg7Item)
 
-        let avg30Item = NSMenuItem(title: "30-day avg: \(formatCountFull(Int(stats.avg30)))", action: nil, keyEquivalent: "")
+        let avg30Item = NSMenuItem(title: "30-day avg: \(formatCountFull(stats.avg30.roundedClampedInt))", action: nil, keyEquivalent: "")
         avg30Item.isEnabled = false
         theMenu.addItem(avg30Item)
 
@@ -970,29 +978,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let isSynthetic = sourcePID != 0 && sourcePID != getpid()
         let dictationApp = isSynthetic ? DictationSources.dictationApp(forPID: sourcePID) : nil
 
-        let added: Int
         if let dictationApp = dictationApp {
-            guard isPasteShortcut(event), let chars = dictatedCharacters() else {
+            guard isPasteShortcut(event) else {
                 // Other synthetic keys from a dictation app (auto-Enter, Backspace…) aren't typing.
                 return
             }
-            added = chars
-            localExtras.dictatedCount = localExtras.dictatedCount.saturatingAdd(chars)
-            localExtras.dictatedAppCounts[bundleID] = (localExtras.dictatedAppCounts[bundleID] ?? 0).saturatingAdd(chars)
-            if let seconds = micTracker.claimSession(for: dictationApp) {
-                localExtras.speakingSeconds += seconds
-                localExtras.speakingChars = localExtras.speakingChars.saturatingAdd(chars)
-            }
-        } else {
-            added = 1
-            if !isSynthetic {
-                recordTypingTiming()
-            }
+            recordDictationPasteAsync(dictationApp: dictationApp, targetBundleID: bundleID, pasteTime: Date())
+            return
         }
 
-        localAppCounts[bundleID, default: 0] += added
-        localKeystrokeCount += added
-        totalKeystrokeCount += added
+        if !isSynthetic {
+            recordTypingTiming()
+        }
+        recordCountIncrement(1, forBundleID: bundleID)
+    }
+
+    private func recordCountIncrement(_ added: Int, forBundleID bundleID: String) {
+        guard added > 0 else { return }
+        localAppCounts[bundleID] = (localAppCounts[bundleID] ?? 0).saturatingAdd(added)
+        localKeystrokeCount = localKeystrokeCount.saturatingAdd(added)
+        totalKeystrokeCount = totalKeystrokeCount.saturatingAdd(added)
 
         // Keep cache current so menu reads never hit disk
         if cachedSyncData.devices[deviceID] == nil {
@@ -1003,8 +1008,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenuBarTitle()
 
         // Thresholds are cumulative because dictation adds many characters at once.
-        unsavedCount += added
-        unsyncedCount += added
+        unsavedCount = unsavedCount.saturatingAdd(added)
+        unsyncedCount = unsyncedCount.saturatingAdd(added)
         if unsavedCount >= 50 {
             saveLocalCount()
         }
@@ -1022,21 +1027,62 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return keycode == 9 /* kVK_ANSI_V */ && event.flags.contains(.maskCommand)
     }
 
-    /// Length of the transcript on the clipboard. Read synchronously inside the tap, before
-    /// the target app handles the paste and before the dictation app restores the clipboard.
-    /// Only the length is used; the text is never stored, logged, or synced.
+    /// Reads the dictated transcript length off the event tap thread with an in-flight guard,
+    /// timeout, and byte/character cap so a slow or oversized clipboard never stalls keyboard input.
+    /// Only the character count is used; the text is never stored, logged, or synced.
+    private func recordDictationPasteAsync(dictationApp: String, targetBundleID: String, pasteTime: Date) {
+        pasteboardLock.lock()
+        if pasteboardReadInFlight {
+            pasteboardLock.unlock()
+            return
+        }
+        pasteboardReadInFlight = true
+        pasteboardLock.unlock()
+
+        pasteboardQueue.async { [weak self] in
+            defer {
+                if let self = self {
+                    self.pasteboardLock.lock()
+                    self.pasteboardReadInFlight = false
+                    self.pasteboardLock.unlock()
+                }
+            }
+            guard let self = self else { return }
+            let startedAt = Date()
+            guard let chars = Self.readDictatedCharactersBounded(),
+                  Date().timeIntervalSince(startedAt) <= Self.pasteboardReadTimeout else {
+                return
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.checkDayChange()
+                self.localExtras.dictatedCount = self.localExtras.dictatedCount.saturatingAdd(chars)
+                self.localExtras.dictatedAppCounts[targetBundleID] = (self.localExtras.dictatedAppCounts[targetBundleID] ?? 0).saturatingAdd(chars)
+                if let seconds = self.micTracker.claimSession(for: dictationApp, at: pasteTime) {
+                    self.localExtras.speakingSeconds = SyncLimits.clampSeconds(self.localExtras.speakingSeconds + seconds)
+                    self.localExtras.speakingChars = self.localExtras.speakingChars.saturatingAdd(chars)
+                }
+                self.recordCountIncrement(chars, forBundleID: targetBundleID)
+            }
+        }
+    }
+
+    /// Reads the UTF-8 string payload from the general pasteboard with a strict byte and character cap.
     /// Runs only for synthetic Cmd+V from an allowlisted dictation app, so password-manager
     /// pastes aren't sampled. Concealed/transient markers can't be used as a filter because
     /// dictation apps (e.g. Aqua) set them on their own transcripts.
-    private func dictatedCharacters() -> Int? {
+    private static func readDictatedCharactersBounded() -> Int? {
         let pasteboard = NSPasteboard.general
         let types = pasteboard.types ?? []
         // Universal Clipboard content would need a network fetch; dictation apps write locally.
         guard types.contains(.string),
               !types.contains(NSPasteboard.PasteboardType("com.apple.is-remote-clipboard")),
-              let text = pasteboard.string(forType: .string) else { return nil }
-        // NSString length (UTF-16 units) is O(1), so long pastes can't stall the event tap.
-        let length = (text as NSString).length
+              let data = pasteboard.data(forType: .string),
+              !data.isEmpty,
+              data.count <= maxDictationPasteboardBytes,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        let length = min((text as NSString).length, maxDictationCharacters)
         return length > 0 ? length : nil
     }
 

@@ -260,7 +260,7 @@ struct ChartTooltip: View {
                     Text(app.displayName)
                         .font(.system(size: 9))
                     Spacer()
-                    Text("\(day.totalCount > 0 ? Int(round(Double(app.count) / Double(day.totalCount) * 100)) : 0)%")
+                    Text("\(day.totalCount > 0 ? (Double(app.count) / Double(day.totalCount) * 100).roundedClampedInt : 0)%")
                         .font(.system(size: 9, weight: .medium).monospacedDigit())
                 }
             }
@@ -304,10 +304,11 @@ struct HistoryView: View {
         for i in 0..<selectedDays {
             guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { continue }
             let dateString = formatter.string(from: date)
-            totalKeystrokes += dataStore.syncData.totalCount(for: dateString, filter: filter)
-            trackedKeystrokes += dataStore.syncData.totalAppCounts(for: dateString, filter: filter).values.reduce(0, +)
+            totalKeystrokes = totalKeystrokes.saturatingAdd(dataStore.syncData.totalCount(for: dateString, filter: filter))
+            let dayTracked = dataStore.syncData.totalAppCounts(for: dateString, filter: filter).values.reduce(0) { $0.saturatingAdd($1) }
+            trackedKeystrokes = trackedKeystrokes.saturatingAdd(dayTracked)
         }
-        let untrackedCount = totalKeystrokes - trackedKeystrokes
+        let untrackedCount = max(0, totalKeystrokes.saturatingSubtract(trackedKeystrokes))
         
         var result: [(bundleID: String, count: Int, color: Color)] = []
         var othersCount = 0
@@ -316,12 +317,12 @@ struct HistoryView: View {
             if index < 5 {
                 result.append((item.key, item.value, AppColorManager.color(for: index)))
             } else {
-                othersCount += item.value
+                othersCount = othersCount.saturatingAdd(item.value)
             }
         }
         
         // Include untracked keystrokes in "Others"
-        othersCount += untrackedCount
+        othersCount = othersCount.saturatingAdd(untrackedCount)
         
         if othersCount > 0 {
             result.append(("others", othersCount, AppColorManager.othersColor))
@@ -365,16 +366,16 @@ struct HistoryView: View {
                     }
                 } else {
                     if !hiddenApps.contains("others") {
-                        othersCount += count
+                        othersCount = othersCount.saturatingAdd(count)
                     }
                 }
             }
             
             // Calculate sum of tracked app counts and add untracked to others
-            let trackedTotal = dayAppCounts.values.reduce(0, +)
-            let untrackedCount = totalCount - trackedTotal
+            let trackedTotal = dayAppCounts.values.reduce(0) { $0.saturatingAdd($1) }
+            let untrackedCount = max(0, totalCount.saturatingSubtract(trackedTotal))
             if untrackedCount > 0 && !hiddenApps.contains("others") {
-                othersCount += untrackedCount
+                othersCount = othersCount.saturatingAdd(untrackedCount)
             }
             
             if othersCount > 0 {
@@ -398,7 +399,7 @@ struct HistoryView: View {
             }
             
             // Calculate displayed total (respecting hidden apps filter)
-            let displayedTotal = breakdown.reduce(0) { $0 + $1.count }
+            let displayedTotal = breakdown.reduce(0) { $0.saturatingAdd($1.count) }
             
             data.append(DailyDataWithApps(
                 date: date,
@@ -531,8 +532,8 @@ struct HistoryView: View {
     /// Typing / speaking WPM for the selected period (5 characters = 1 word).
     private var speedSummary: String {
         let wpm = dataStore.syncData.wpm(forDays: selectedDays, from: Date())
-        let typing = wpm.typing.map { "Typing \(Int($0.rounded())) WPM" } ?? "Typing – WPM"
-        let speaking = wpm.speaking.map { "Speaking \(Int($0.rounded())) WPM" } ?? "Speaking – WPM"
+        let typing = wpm.typing.map { "Typing \($0.roundedClampedInt) WPM" } ?? "Typing – WPM"
+        let speaking = wpm.speaking.map { "Speaking \($0.roundedClampedInt) WPM" } ?? "Speaking – WPM"
         return "\(typing) · \(speaking)"
     }
 
