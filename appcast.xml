@@ -4,14 +4,14 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
   <channel>
     <title>Typing Stats</title>
     <item>
-      <title>Version 0.0.30</title>
-      <sparkle:version>0.0.30</sparkle:version>
-      <sparkle:shortVersionString>0.0.30</sparkle:shortVersionString>
-      <pubDate>Mon, 02 Nov 2026 05:08:34 +0000</pubDate>
-      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.30/TypingStats.zip" type="application/octet-stream" length="2642429" sparkle:edSignature="E9XdYsuCUdBk5g/iruA2EdVw/m4v0w5xQ1CZ3d0gcRBylst108h8CsPpzVP7a8HOajGyjwrB7fET53ZId27MDw=="></enclosure>
+      <title>Version 0.0.31</title>
+      <sparkle:version>0.0.31</sparkle:version>
+      <sparkle:shortVersionString>0.0.31</sparkle:shortVersionString>
+      <pubDate>Mon, 02 Nov 2026 06:12:34 +0000</pubDate>
+      <enclosure url="https://github.com/rauchg/typing-stats/releases/download/v0.0.31/TypingStats.zip" type="application/octet-stream" length="2713708" sparkle:edSignature="92jl+ENoM4YRf4m0klxihcSAaSKPorsFOt+LKXiNKBNlVmM0qzbpW1Wk+LhZR41SN90cnSEiFNBo6qZXpskODg=="></enclosure>
     </item>
   </channel>
 </rss><!-- sparkle-signatures:
-edSignature: uDDj+ixiro4nyv3dchg38FVN5qOmOe6HhrmA6Q4xPYOgxcEOmSCsLGbWVrJjLKxiaUgQorIZJ2YcFUmsV/rUCg==
+edSignature: lDB0F2eS4vMOWvZps1wuZaHu/I5vcbrN+XWLhqtD0qFqAkTmcdT82CV4rdv2jrSgJ6y7M5TcaDNpp/3uRMC9BA==
 length: 953
 -->
