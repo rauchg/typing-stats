@@ -73,8 +73,8 @@ jobs:
 
       - name: Download and verify Sparkle tools
         run: |
-          curl -fsSL -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
-          echo "5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be  /tmp/sparkle.tar.xz" | shasum -a 256 -c -
+          curl -fsSL -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz"
+          echo "1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27  /tmp/sparkle.tar.xz" | shasum -a 256 -c -
           cd /tmp && tar xf sparkle.tar.xz
 
       - name: Sign update
@@ -126,6 +126,14 @@ jobs:
           </rss>
           EOF
 
+      - name: Create Release
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          files: |
+            TypingStats.zip
+            appcast.xml
+          generate_release_notes: true
+
       - name: Commit updated formula
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -134,8 +142,14 @@ jobs:
           HEAD_OID=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
           CASK_B64=$(base64 < Casks/typing-stats.rb | tr -d '\n')
           APPCAST_B64=$(base64 < appcast.xml | tr -d '\n')
+          BRANCH="release/v${VERSION}"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/heads/${BRANCH}" -f sha="$HEAD_OID" 2>/dev/null || \
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" \
+            -f sha="$HEAD_OID" -F force=true
           jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$BRANCH" \
             --arg oid "$HEAD_OID" \
             --arg msg "Update to v${VERSION}" \
             --arg cask "$CASK_B64" \
@@ -144,7 +158,7 @@ jobs:
               query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid signature { isValid } } } }",
               variables: {
                 input: {
-                  branch: { repositoryNameWithOwner: $repo, branchName: "main" },
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
                   expectedHeadOid: $oid,
                   message: { headline: $msg },
                   fileChanges: {
@@ -156,9 +170,3 @@ jobs:
                 }
               }
             }' | gh api graphql --input -
-
-      - name: Create Release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          files: TypingStats.zip
-          generate_release_notes: true
