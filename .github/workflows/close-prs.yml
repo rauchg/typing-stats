@@ -9,8 +9,10 @@ permissions:
 
 jobs:
   close:
-    if: github.event.pull_request.user.login != 'rauchg' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    if: >-
+      !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      !contains(fromJSON('["rauchg", "dependabot[bot]", "app/dependabot", "github-actions[bot]", "app/github-actions"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-24.04
     steps:
       - name: Close external pull request
         env:

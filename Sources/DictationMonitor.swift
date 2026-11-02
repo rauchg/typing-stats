@@ -8,10 +8,9 @@ import CoreAudio
 enum DictationSources {
     /// Bundle IDs of the *outermost* app bundle. Helper processes are resolved to their
     /// containing app (e.g. Aqua's `AquaMacOSBridge.app` → `com.electron.aqua-voice`).
-    /// Verified with the probe: Aqua Voice. Verified from the binary: Willow Voice.
-    /// The rest are best-effort and can be extended with:
-    ///   defaults write com.typing-stats.app additionalDictationBundleIDs -array com.example.app
-    static let builtIn: Set<String> = [
+    /// Hardcoded at compile time rather than extensible via UserDefaults so another local
+    /// user-level process cannot add itself via `defaults write` to trigger pasteboard reads.
+    static let allowlist: Set<String> = [
         "com.electron.aqua-voice",
         "aquavoice.macOSBridge",
         "com.seewillow.WillowMac",
@@ -20,11 +19,6 @@ enum DictationSources {
         "com.goodsnooze.MacWhisper",
         "com.prakashjoshipax.VoiceInk",
     ]
-
-    static var allowlist: Set<String> {
-        let extra = UserDefaults.standard.stringArray(forKey: "additionalDictationBundleIDs") ?? []
-        return builtIn.union(extra)
-    }
 
     /// Bundle ID of the outermost `.app` containing the process's executable,
     /// falling back to the process's own bundle ID.

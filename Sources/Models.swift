@@ -243,12 +243,19 @@ struct DeviceData: Codable {
 
     mutating func pruneOldData(keepingDays: Int = 60) {
         let calendar = Calendar.current
-        let cutoffDate = calendar.date(byAdding: .day, value: -keepingDays, to: Date())!
+        let now = Date()
+        guard let cutoffDate = calendar.date(byAdding: .day, value: -keepingDays, to: now),
+              let maxDate = calendar.date(byAdding: .day, value: 1, to: now) else { return }
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         let cutoffString = formatter.string(from: cutoffDate)
+        let maxString = formatter.string(from: maxDate)
 
-        dailyCounts = dailyCounts.filter { $0.key >= cutoffString }
+        dailyCounts = dailyCounts.filter { key, _ in
+            guard key.count == 10, formatter.date(from: key) != nil else { return false }
+            return key >= cutoffString && key <= maxString
+        }
     }
 }
 
