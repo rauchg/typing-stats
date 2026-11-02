@@ -25,7 +25,7 @@ jobs:
       - name: Verify tag is on main
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+          if ! git merge-base --is-ancestor "HEAD^{commit}" refs/remotes/origin/main; then
             echo "Tagged commit $GITHUB_SHA is not an ancestor of origin/main" >&2
             exit 1
           fi
@@ -61,8 +61,8 @@ jobs:
           echo "$CERTIFICATE_P12" | base64 --decode > "$P12_PATH"
           security import "$P12_PATH" -P "$CERTIFICATE_PASSWORD" -t cert -f pkcs12 -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
           rm -f "$P12_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
           # Download, verify SHA-256, and import Apple intermediate certificate
           curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$CA_PATH"
@@ -71,6 +71,7 @@ jobs:
 
       - name: Build and notarize
         env:
+          VERSION: ${{ steps.version.outputs.version }}
           SIGNING_IDENTITY: "Developer ID Application: Guillermo Rauch (DD5LU2JV6J)"
           APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}

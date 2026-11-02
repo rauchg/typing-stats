@@ -23,8 +23,8 @@ for arg in "$@"; do
     esac
 done
 
-# Get version from latest git tag
-VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.1")
+# Get version from environment or latest git tag
+VERSION="${VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.1")}"
 echo "Version: $VERSION"
 
 if [ "$RELEASE_BUILD" = true ]; then
