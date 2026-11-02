@@ -126,10 +126,9 @@ if [ "$NOTARIZE" = true ]; then
         --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
         --wait
 
-    # Staple and validate the notarization ticket + Gatekeeper assessment
-    echo "Stapling and validating notarization ticket..."
+    # Staple the notarization ticket (stapler staple attaches and validates the ticket) + Gatekeeper assessment
+    echo "Stapling notarization ticket and verifying with Gatekeeper..."
     xcrun stapler staple "$BUNDLE_NAME"
-    xcrun stapler validate "$BUNDLE_NAME"
     spctl --assess --type execute --verbose=4 "$BUNDLE_NAME"
 
     # Clean up
