@@ -5,4 +5,19 @@ AppIcon.iconset/
 icon_macos.png
 Typing Stats.app
 Typing Stats (Dev).app
-TypingStats.app
+
+# Secrets, keys, and signing certificates
+*.p12
+*.pfx
+*.pem
+*.key
+*.p8
+*.cer
+*.crt
+*.der
+*.keychain
+*.keychain-db
+*sparkle*key*
+.env
+.env.*
+
