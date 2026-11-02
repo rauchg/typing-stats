@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
+
 BUILD_DIR=".build"
 
 # Parse arguments
@@ -66,7 +70,17 @@ SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 if [ "$SIGNING_IDENTITY" = "-" ]; then
     echo "Using ad-hoc signing (set SIGNING_IDENTITY for Developer ID signing)"
 else
-    echo "Using signing identity: $SIGNING_IDENTITY"
+    if [[ ! "$SIGNING_IDENTITY" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+        RESOLVED_HASH=$(security find-identity -v -p codesigning 2>/dev/null | grep -F "$SIGNING_IDENTITY" | head -n 1 | awk '{print $2}')
+        if [ -n "$RESOLVED_HASH" ]; then
+            echo "Using signing identity: $SIGNING_IDENTITY ($RESOLVED_HASH)"
+            SIGNING_IDENTITY="$RESOLVED_HASH"
+        else
+            echo "Using signing identity: $SIGNING_IDENTITY"
+        fi
+    else
+        echo "Using signing identity: $SIGNING_IDENTITY"
+    fi
 fi
 
 # Re-sign Sparkle framework first to match our signing identity
@@ -85,8 +99,9 @@ if [ -d "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework" ]; then
     codesign "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
 fi
 
-# Sign the outer app bundle
+# Sign the outer app bundle and verify signature integrity
 codesign --deep "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME"
+codesign --verify --deep --strict --verbose=2 "$BUNDLE_NAME"
 
 # Notarize if requested
 if [ "$NOTARIZE" = true ]; then
@@ -111,9 +126,11 @@ if [ "$NOTARIZE" = true ]; then
         --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
         --wait
 
-    # Staple the notarization ticket
-    echo "Stapling notarization ticket..."
+    # Staple and validate the notarization ticket + Gatekeeper assessment
+    echo "Stapling and validating notarization ticket..."
     xcrun stapler staple "$BUNDLE_NAME"
+    xcrun stapler validate "$BUNDLE_NAME"
+    spctl --assess --type execute --verbose=4 "$BUNDLE_NAME"
 
     # Clean up
     rm -f "$KEY_FILE" "${BUNDLE_NAME%.app}.zip"

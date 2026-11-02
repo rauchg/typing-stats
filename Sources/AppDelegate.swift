@@ -67,7 +67,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Maximum UTF-8 byte size (256 KB) and UTF-16 character count (100k) accepted for a single dictation paste.
     private static let maxDictationPasteboardBytes = 256 * 1024
     private static let maxDictationCharacters = 100_000
-    private let fileCoordinator = NSFileCoordinator()
+    /// Timestamps of recent event-tap timeout events, used for exponential backoff and circuit breaking.
+    private var tapTimeoutTimes: [Date] = []
+    private var tapReenablePending = false
 
     // MARK: - App Lifecycle
 
@@ -266,8 +268,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func coordinatedSync(to url: URL, forceMerge: Bool = true, transform: @escaping (SyncData) -> SyncData) {
         var coordinatorError: NSError?
         var readData = SyncData()
+        let coordinator = NSFileCoordinator()
 
-        fileCoordinator.coordinate(
+        coordinator.coordinate(
             writingItemAt: url,
             options: .forMerging,
             error: &coordinatorError
@@ -287,6 +290,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 newData.merge(with: freshSync)
             }
 
+            // Prune after merging with disk so old dates in the on-disk file aren't resurrected.
+            newData.pruneAllDevices(keepingDays: 60)
+
             if let encoded = try? JSONEncoder().encode(newData) {
                 try? encoded.write(to: coordURL, options: .atomic)
             }
@@ -300,8 +306,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func loadSyncData(from url: URL) -> SyncData {
         var result = SyncData()
         var coordinatorError: NSError?
+        let coordinator = NSFileCoordinator()
 
-        fileCoordinator.coordinate(
+        coordinator.coordinate(
             readingItemAt: url,
             options: .withoutChanges,
             error: &coordinatorError
@@ -942,14 +949,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: .listenOnly,
             eventsOfInterest: eventMask,
             callback: { (_, type, event, refcon) -> Unmanaged<CGEvent>? in
                 if let refcon = refcon {
                     let appDelegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
                     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                        // macOS disables slow taps; turn it back on instead of silently stopping.
-                        if let tap = appDelegate.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                        appDelegate.handleTapDisabled()
                     } else if type == .keyDown {
                         appDelegate.handleKeyEvent(event)
                     }
@@ -965,6 +971,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    /// Re-enables the event tap with exponential backoff and a circuit breaker (max 4 disables in 60s)
+    /// so a misbehaving system state cannot spin re-enabling the tap in a tight loop.
+    private func handleTapDisabled() {
+        guard !tapReenablePending else { return }
+        let now = Date()
+        tapTimeoutTimes = tapTimeoutTimes.filter { now.timeIntervalSince($0) < 60 }
+        guard tapTimeoutTimes.count < 4 else { return }
+        tapTimeoutTimes.append(now)
+        tapReenablePending = true
+        let delay = min(pow(2.0, Double(tapTimeoutTimes.count - 1)) * 0.25, 4.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            self.tapReenablePending = false
+            if let tap = self.eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+        }
     }
 
     func handleKeyEvent(_ event: CGEvent) {

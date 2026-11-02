@@ -25,7 +25,6 @@ fi
 
 echo "Latest release: $LATEST, test copy labeled: $FAKE"
 ./build.sh --release
-git checkout -- Info.plist   # build.sh stamps the version into the tracked plist
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $FAKE" -c "Set :CFBundleShortVersionString $FAKE" "$APP/Contents/Info.plist"
 codesign --force --deep --options runtime --sign "${SIGNING_IDENTITY:--}" "$APP"

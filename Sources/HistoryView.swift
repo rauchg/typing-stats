@@ -11,7 +11,6 @@ class HistoryDataStore: ObservableObject {
     /// Live data from the app (disk data merged with this device's unsynced counts).
     /// Preferred over re-reading the file, which lags until the next sync.
     private let liveData: (() -> SyncData)?
-    private let fileCoordinator = NSFileCoordinator()
     
     init(syncData: SyncData, dataFileURL: URL?, liveData: (() -> SyncData)? = nil) {
         self.syncData = syncData
@@ -26,6 +25,7 @@ class HistoryDataStore: ObservableObject {
         }
         guard let url = dataFileURL else { return }
         var coordinatorError: NSError?
+        let fileCoordinator = NSFileCoordinator()
         
         // Note: fileCoordinator.coordinate may call its closure on a background thread,
         // so we dispatch the @Published property update to main thread for thread safety
