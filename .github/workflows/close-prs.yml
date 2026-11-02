@@ -1,0 +1,21 @@
+name: Close External PRs
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    if: github.event.pull_request.user.login != 'rauchg' && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close external pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr close "$PR_NUMBER" -R "$REPO" --comment "Thanks for your interest in Typing Stats! This repository does not accept external pull requests. Please open an [issue](https://github.com/rauchg/typing-stats/issues) or [discussion](https://github.com/rauchg/typing-stats/discussions) instead."
