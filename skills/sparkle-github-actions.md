@@ -96,12 +96,12 @@ Download Sparkle tools and generate a key pair:
 curl -L -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
 cd /tmp && tar xf sparkle.tar.xz
 
-# Generate keys
+# Generate keys (stores key in Keychain and prints SUPublicEDKey XML)
 /tmp/bin/generate_keys
 
-# Output example:
-# Public key: /RaPIidGEROzGioPzcxwYjENa20i6nAl2j4bTnbCcGk=
-# Private key: /FRZYhydzorq1HS6ojBRzEFi0rpz8gyiUEkiNXjpa98=
+# Export the private key for GitHub Actions
+/tmp/bin/generate_keys -x /tmp/sparkle_private_key
+cat /tmp/sparkle_private_key && rm /tmp/sparkle_private_key
 ```
 
 **Important**:
