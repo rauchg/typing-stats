@@ -10,10 +10,6 @@ cask "typing-stats" do
 
   app "Typing Stats.app"
 
-  postflight_steps do
-    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Typing Stats.app"]
-  end
-
   zap trash: [
     "~/Library/Application Support/TypingStats",
     "~/Library/Preferences/com.typing-stats.app.plist",

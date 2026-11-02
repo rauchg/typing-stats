@@ -16,11 +16,18 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version tag: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Update Info.plist version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
 
@@ -29,22 +36,29 @@ jobs:
           CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
         run: |
+          umask 077
           # Create temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          P12_PATH="$RUNNER_TEMP/certificate.p12"
+          CA_PATH="$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          trap 'rm -f "$P12_PATH" "$CA_PATH"' EXIT
+
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           # Import certificate
-          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          echo "$CERTIFICATE_P12" | base64 --decode > "$P12_PATH"
+          security import "$P12_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$P12_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-          # Download and import Apple intermediate certificate (ignore if already exists)
-          curl -sL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o $RUNNER_TEMP/DeveloperIDG2CA.cer
-          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH || true
+          # Download, verify SHA-256, and import Apple intermediate certificate
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$CA_PATH"
+          echo "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a  $CA_PATH" | shasum -a 256 -c -
+          security import "$CA_PATH" -k "$KEYCHAIN_PATH" || true
 
       - name: Build and notarize
         env:
@@ -57,9 +71,10 @@ jobs:
       - name: Create zip
         run: ditto -c -k --keepParent "Typing Stats.app" TypingStats.zip
 
-      - name: Download Sparkle
+      - name: Download and verify Sparkle tools
         run: |
-          curl -L -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
+          curl -fsSL -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
+          echo "5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be  /tmp/sparkle.tar.xz" | shasum -a 256 -c -
           cd /tmp && tar xf sparkle.tar.xz
 
       - name: Sign update
@@ -67,26 +82,31 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_key
-          OUTPUT=$(/tmp/bin/sign_update TypingStats.zip -f /tmp/sparkle_key)
+          OUTPUT=$(echo "$SPARKLE_PRIVATE_KEY" | /tmp/bin/sign_update TypingStats.zip --ed-key-file -)
           SIGNATURE=$(echo "$OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
           LENGTH=$(echo "$OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
-          echo "signature=$SIGNATURE" >> $GITHUB_OUTPUT
-          echo "length=$LENGTH" >> $GITHUB_OUTPUT
-          rm /tmp/sparkle_key
+          if [ -z "$SIGNATURE" ] || [ -z "$LENGTH" ]; then
+            echo "Failed to extract Sparkle signature or length" >&2
+            exit 1
+          fi
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "length=$LENGTH" >> "$GITHUB_OUTPUT"
 
       - name: Update cask formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           SHA=$(shasum -a 256 TypingStats.zip | awk '{print $1}')
-          sed -i '' "s/version \".*\"/version \"${{ steps.version.outputs.version }}\"/" Casks/typing-stats.rb
+          sed -i '' "s/version \".*\"/version \"$VERSION\"/" Casks/typing-stats.rb
           sed -i '' "s/sha256 \".*\"/sha256 \"$SHA\"/" Casks/typing-stats.rb
 
       - name: Update appcast.xml
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGNATURE: ${{ steps.sign.outputs.signature }}
+          LENGTH: ${{ steps.sign.outputs.length }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
-          SIGNATURE="${{ steps.sign.outputs.signature }}"
-          LENGTH="${{ steps.sign.outputs.length }}"
           cat > appcast.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
           <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -107,15 +127,35 @@ jobs:
           EOF
 
       - name: Commit updated formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
-          git pull origin main
-          git add Casks/typing-stats.rb appcast.xml
-          git commit -m "Update to v${{ steps.version.outputs.version }}"
-          git push origin main
+          HEAD_OID=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          CASK_B64=$(base64 < Casks/typing-stats.rb | tr -d '\n')
+          APPCAST_B64=$(base64 < appcast.xml | tr -d '\n')
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg oid "$HEAD_OID" \
+            --arg msg "Update to v${VERSION}" \
+            --arg cask "$CASK_B64" \
+            --arg appcast "$APPCAST_B64" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid signature { isValid } } } }",
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: "main" },
+                  expectedHeadOid: $oid,
+                  message: { headline: $msg },
+                  fileChanges: {
+                    additions: [
+                      { path: "Casks/typing-stats.rb", contents: $cask },
+                      { path: "appcast.xml", contents: $appcast }
+                    ]
+                  }
+                }
+              }
+            }' | gh api graphql --input -
 
       - name: Create Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1

@@ -70,19 +70,23 @@ else
 fi
 
 # Re-sign Sparkle framework first to match our signing identity
-if [ -d "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework" ]; then
-    echo "Re-signing Sparkle framework..."
-    codesign --force --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
-    codesign --force --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
-    find "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" -name "*.xpc" -exec codesign --force --sign "$SIGNING_IDENTITY" {} \;
+CODESIGN_ARGS=(--force --sign "$SIGNING_IDENTITY")
+if [ "$SIGNING_IDENTITY" != "-" ]; then
+    CODESIGN_ARGS+=(--options runtime --timestamp)
 fi
 
-# Use hardened runtime only for proper Developer ID signing (not ad-hoc)
-if [ "$SIGNING_IDENTITY" = "-" ]; then
-    codesign --force --deep --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
-else
-    codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" "$BUNDLE_NAME"
+if [ -d "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework" ]; then
+    echo "Re-signing Sparkle framework..."
+    find "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" -name "*.xpc" -exec codesign "${CODESIGN_ARGS[@]}" {} \;
+    if [ -f "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" ]; then
+        codesign "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+    fi
+    codesign "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
+    codesign "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
 fi
+
+# Sign the outer app bundle
+codesign --deep "${CODESIGN_ARGS[@]}" "$BUNDLE_NAME"
 
 # Notarize if requested
 if [ "$NOTARIZE" = true ]; then
@@ -92,9 +96,10 @@ if [ "$NOTARIZE" = true ]; then
     fi
 
     echo "Notarizing app..."
-    # Write API key to temp file
-    KEY_FILE=$(mktemp)
-    echo "$APP_STORE_CONNECT_KEY" > "$KEY_FILE"
+    # Write API key to restricted temp file and guarantee cleanup on exit
+    KEY_FILE=$(umask 077 && mktemp)
+    trap 'rm -f "$KEY_FILE" "${BUNDLE_NAME%.app}.zip"' EXIT
+    printf '%s\n' "$APP_STORE_CONNECT_KEY" > "$KEY_FILE"
 
     # Create zip for notarization
     ditto -c -k --keepParent "$BUNDLE_NAME" "${BUNDLE_NAME%.app}.zip"
@@ -111,8 +116,8 @@ if [ "$NOTARIZE" = true ]; then
     xcrun stapler staple "$BUNDLE_NAME"
 
     # Clean up
-    rm "$KEY_FILE"
-    rm "${BUNDLE_NAME%.app}.zip"
+    rm -f "$KEY_FILE" "${BUNDLE_NAME%.app}.zip"
+    trap - EXIT
 
     echo "Notarization complete!"
 fi
